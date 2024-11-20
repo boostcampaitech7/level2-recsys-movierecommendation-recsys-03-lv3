@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.optim import Adam
-from tqdm import tqdm
+import tqdm
 import wandb
 
 from .utils import recall_at_k
@@ -78,13 +78,17 @@ class DeepFM(Trainer):
             args,
         )
 
-    def iteration(self, dataloader, mode="train"):
+    def iteration(self, epoch, dataloader, mode="train"):
+
+        rec_data_iter = tqdm.tqdm(
+            dataloader,
+            desc="Recommendation EP_%s:%d" % (mode, epoch),
+            total=len(dataloader),
+            bar_format="{l_bar}{r_bar}",
+        )
 
         if mode == "train":
-            for x, y in tqdm(dataloader):
-                print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
-                print(f"x type: {type(x)}, y type: {type(y)}")  # 타입 확인
-                print(f"x shape: {x.shape}, y shape: {y.shape}")  # shape 확인
+            for x, y in rec_data_iter:
                 x, y = x.to(self.device), y.to(self.device)
                 self.model.train()
                 self.optim.zero_grad()
@@ -97,13 +101,13 @@ class DeepFM(Trainer):
         else:
             predicted = []
             actual = []
-            for x, y in tqdm(dataloader):
+            for x, y in rec_data_iter:
                 x, y = x.to(self.device), y.to(self.device)
                 self.model.eval()
                 output = self.model(x)
 
                 # 예측을 상위 10개로 정렬
-                _, top_k_indices = torch.topk(output, k=10, dim=1)
+                _, top_k_indices = torch.topk(output, k=10, dim=0)
 
                 # 예측 결과를 저장
                 predicted.extend(top_k_indices.cpu().numpy())
