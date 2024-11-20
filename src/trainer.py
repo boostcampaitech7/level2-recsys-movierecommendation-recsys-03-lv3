@@ -110,8 +110,8 @@ class DeepFM(Trainer):
                 _, top_k_indices = torch.topk(output, k=10, dim=0)
 
                 # 예측 결과를 저장
-                predicted.extend(top_k_indices.cpu().numpy())
-                actual.extend(y.cpu().numpy())
+                predicted.append(top_k_indices.cpu().numpy().tolist())
+                actual.append(y.cpu().numpy().tolist())
 
             recall_5 = recall_at_k(actual, predicted, topk=5)
             recall_10 = recall_at_k(actual, predicted, topk=10)
