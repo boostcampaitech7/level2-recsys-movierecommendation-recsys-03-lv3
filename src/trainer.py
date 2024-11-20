@@ -122,3 +122,5 @@ class DeepFM(Trainer):
             }
             print(post_fix)
             wandb.log(post_fix)
+
+            return [recall_5, recall_10]

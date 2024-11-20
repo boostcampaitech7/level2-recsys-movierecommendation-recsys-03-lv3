@@ -4,12 +4,13 @@ import argparse
 from omegaconf import OmegaConf
 import pandas as pd
 import torch
-from torch.utils.data import DataLoader, Dataset
+import numpy as np
+from torch.utils.data import DataLoader, Dataset, random_split
 import wandb
 import json
 from tqdm import tqdm
 
-from src.utils import set_seed, check_path
+from src.utils import set_seed, check_path, EarlyStopping
 import src.model as model_module
 import src.trainer as trainer_module
 
@@ -41,10 +42,11 @@ def main():
             config_yaml[key] = config_args[key]
 
     args = config_yaml
+    args_str = f"{args.model_name}_{args.run}"
 
     wandb.init(
         project=args.wandb_project,
-        name=args.run,
+        name=args_str,
         entity="remember-us",
         config={
             "model": args.model_name,
@@ -164,13 +166,20 @@ def main():
             return self.target_tensor.size(0)
 
     dataset = RatingDataset(X, y)
-    train_ratio = 0.9
+    train_ratio = 0.8
+    valid_ratio = 0.1
+    test_ratio = 0.1
 
-    train_size = int(train_ratio * len(data))
-    test_size = len(data) - train_size
-    train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
+    total_size = len(data)
+    train_size = int(train_ratio * total_size)
+    valid_size = int(valid_ratio * total_size)
+    test_size = total_size - train_size - valid_size
+
+    train_dataset, temp_dataset = random_split(dataset, [train_size, valid_size + test_size])
+    valid_dataset, test_dataset = random_split(temp_dataset, [valid_size, test_size])
 
     train_loader = DataLoader(train_dataset, batch_size=1024, shuffle=True)
+    valid_loader = DataLoader(valid_dataset, batch_size=512, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=512, shuffle=False)
 
     # 3. Model
@@ -180,16 +189,23 @@ def main():
 
     # 4. Train
     print(f"--------------- {args.model_name} TRAINING ---------------")
-    trainer = getattr(trainer_module, args.model_name)(model, train_loader, None, test_loader, None, args)
+    trainer = getattr(trainer_module, args.model_name)(model, train_loader, valid_loader, test_loader, None, args)
 
-    # early stopping 및 모델 저장 추가
+    checkpoint = args_str + ".pt"
+    checkpoint_path = os.path.join(args.output_path, checkpoint)
+    early_stopping = EarlyStopping(checkpoint_path, patience=10, verbose=True)
     for epoch in tqdm(range(args.epochs)):
         trainer.train(epoch)
-        # scores, _ = trainer.valid(epoch)
+        scores = trainer.valid(epoch)
+
+        early_stopping(np.array(scores[-1:]), trainer.model)
+        if early_stopping.early_stop:
+            print("Early stopping")
+            break
 
     # 5. Test
     print(f"--------------- {args.model_name} TEST ---------------")
-    trainer.test(0)
+    _ = trainer.test(0)
 
     wandb.log({
         "params": json.dumps(OmegaConf.to_container(args.model_args[args.model_name]))
