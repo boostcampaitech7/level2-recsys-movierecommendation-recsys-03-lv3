@@ -192,7 +192,7 @@ def main():
     trainer.test(0)
 
     wandb.log({
-        "params": json.dumps(args.model_args[args.model_name])
+        "params": json.dumps(OmegaConf.to_container(args.model_args[args.model_name]))
     })
     wandb.finish()
 
