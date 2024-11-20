@@ -1,0 +1,16 @@
+
+seed: 42                                        # 시드 고정
+wandb_project: "movie"                          # wandb 프로젝트 이름
+data_path: "~/movie/data/train/"
+output_path: "output/"
+
+model_args:                                     # model 파라미터
+    DeepFM:
+        embedding_dim: 10
+        mlp_dims: [30, 20, 10]
+        drop_rate: 0.1
+
+optuna_trials: 100                              # optuna 시행 횟수
+
+# optuna_args:                                  # optuna 파라미터 탐색 범위
+#     DeepFM:
