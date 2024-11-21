@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.optim import Adam
+import numpy as np
 import tqdm
 import wandb
 
@@ -15,6 +16,7 @@ class Trainer:
         eval_dataloader,
         test_dataloader,
         submission_dataloader,
+        train_matrix,
         args,
     ):
 
@@ -30,6 +32,7 @@ class Trainer:
         self.eval_dataloader = eval_dataloader
         self.test_dataloader = test_dataloader
         self.submission_dataloader = submission_dataloader
+        self.train_matrix = train_matrix
 
         self.optim = Adam(
             self.model.parameters(),
@@ -67,6 +70,7 @@ class DeepFM(Trainer):
         eval_dataloader,
         test_dataloader,
         submission_dataloader,
+        train_matrix,
         args,
     ):
         super(DeepFM, self).__init__(
@@ -75,6 +79,7 @@ class DeepFM(Trainer):
             eval_dataloader,
             test_dataloader,
             submission_dataloader,
+            train_matrix,
             args,
         )
 
@@ -88,37 +93,54 @@ class DeepFM(Trainer):
         )
 
         if mode == "train":
+            self.model.train()
+
             for x, y in rec_data_iter:
                 x, y = x.to(self.device), y.to(self.device)
-                self.model.train()
                 self.optim.zero_grad()
                 output = self.model(x)
                 loss = nn.BCELoss()(output, y.float())
                 loss.backward()
-                self.optim.step()
-        elif mode == "submission":
-            pass
+                self.optim.step()         
         else:
-            predicted = []
-            actual = []
-            for x, y in rec_data_iter:
+            self.model.eval()
+        
+            pred_list = None
+            answer_list = None
+            for i, batch in enumerate(rec_data_iter):
+                x, y = batch
                 x, y = x.to(self.device), y.to(self.device)
-                self.model.eval()
-                output = self.model(x)
+                
+                # Predict scores for all items
+                rating_pred = self.model(x)  # DeepFM Forward
 
-                # 예측을 상위 10개로 정렬
-                _, top_k_indices = torch.topk(output, k=10, dim=0)
+                # Exclude already interacted items
+                rating_pred = rating_pred.cpu().data.numpy()
+                user_ids = x[:, 0].cpu().numpy()  # User IDs from batch
+                rating_pred[self.train_matrix[user_ids].toarray() > 0] = 0
 
-                # 예측 결과를 저장
-                predicted.append(top_k_indices.cpu().numpy().tolist())
-                actual.append(y.cpu().numpy().tolist())
+                # Get top 10 recommendations
+                ind = np.argpartition(rating_pred, -10)[:, -10:]  # Top-10 indices
+                arr_ind = rating_pred[np.arange(len(rating_pred))[:, None], ind]
+                arr_ind_argsort = np.argsort(arr_ind)[np.arange(len(rating_pred)), ::-1]
+                batch_pred_list = ind[
+                    np.arange(len(rating_pred))[:, None], arr_ind_argsort
+                ]
 
-            recall_5 = recall_at_k(actual, predicted, topk=5)
-            recall_10 = recall_at_k(actual, predicted, topk=10)
+                # Append results
+                if i == 0:
+                    pred_list = batch_pred_list
+                    answer_list = y.cpu().numpy()
+                else:
+                    pred_list = np.append(pred_list, batch_pred_list, axis=0)
+                    answer_list = np.append(answer_list, y.cpu().numpy(), axis=0)
+
+            recall_5 = recall_at_k(answer_list, pred_list, topk=5)
+            recall_10 = recall_at_k(answer_list, pred_list, topk=10)
 
             post_fix = {
-                "RECALL@5": "{:.4f}".format(recall_10),
-                "RECALL@10": "{:.4f}".format(recall_5),
+                "RECALL@5": "{:.4f}".format(recall_5),
+                "RECALL@10": "{:.4f}".format(recall_10),
             }
             print(post_fix)
             wandb.log(post_fix)

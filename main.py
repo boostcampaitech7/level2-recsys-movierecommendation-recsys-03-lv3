@@ -5,10 +5,11 @@ from omegaconf import OmegaConf
 import pandas as pd
 import torch
 import numpy as np
-from torch.utils.data import DataLoader, Dataset, random_split
+from torch.utils.data import Dataset, DataLoader, random_split
 import wandb
 import json
 from tqdm import tqdm
+from scipy.sparse import csr_matrix
 
 from src.utils import set_seed, check_path, EarlyStopping
 import src.model as model_module
@@ -62,75 +63,121 @@ def main():
     check_path(args.output_path)
 
     # 2. Load Data
-    # # 1. Rating df 생성
-    # rating_data = args.data_path + "train_ratings.csv"
 
-    # raw_rating_df = pd.read_csv(rating_data)
-    # raw_rating_df
-    # raw_rating_df["rating"] = 1.0 # implicit feedback
-    # raw_rating_df.drop(["time"],axis=1,inplace=True)
+    # 1. Rating df 생성
+    rating_data = args.data_path + "train_ratings.csv"
 
-    # users = set(raw_rating_df.loc[:, "user"])
-    # items = set(raw_rating_df.loc[:, "item"])
+    raw_rating_df = pd.read_csv(rating_data)
+    raw_rating_df
+    raw_rating_df["rating"] = 1.0 # implicit feedback
+    raw_rating_df.drop(["time"],axis=1,inplace=True)
 
-    # #2. Genre df 생성
-    # genre_data = args.data_path + "/genres.tsv"
+    users = set(raw_rating_df.loc[:, "user"])
+    items = set(raw_rating_df.loc[:, "item"])
 
-    # raw_genre_df = pd.read_csv(genre_data, sep="\t")
-    # raw_genre_df = raw_genre_df.drop_duplicates(subset=["item"]) #item별 하나의 장르만 남도록 drop
-    # print(raw_genre_df)
+    #2. Genre df 생성
+    genre_data = args.data_path + "/genres.tsv"
 
-    # genre_dict = {genre:i for i, genre in enumerate(set(raw_genre_df["genre"]))}
-    # raw_genre_df["genre"]  = raw_genre_df["genre"].map(lambda x : genre_dict[x]) #genre id로 변경
+    raw_genre_df = pd.read_csv(genre_data, sep="\t")
+    raw_genre_df = raw_genre_df.drop_duplicates(subset=["item"]) #item별 하나의 장르만 남도록 drop
+    print(raw_genre_df)
 
+    genre_dict = {genre:i for i, genre in enumerate(set(raw_genre_df["genre"]))}
+    raw_genre_df["genre"]  = raw_genre_df["genre"].map(lambda x : genre_dict[x]) #genre id로 변경
 
-    # # 3. Negative instance 생성
-    # print("Create Nagetive instances")
-    # num_negative = 50
-    # user_group_dfs = list(raw_rating_df.groupby("user")["item"])
-    # first_row = True
-    # user_neg_dfs = pd.DataFrame()
+    joined_rating_df = pd.merge(raw_rating_df, raw_genre_df, left_on="item", right_on="item", how="inner")
+    users = list(set(joined_rating_df.loc[:,"user"]))
+    users.sort()
+    items =  list(set((joined_rating_df.loc[:, "item"])))
+    items.sort()
+    genres =  list(set((joined_rating_df.loc[:, "genre"])))
+    genres.sort()
 
-    # for u, u_items in tqdm(user_group_dfs):
-    #     u_items = set(u_items)
-    #     i_user_neg_item = np.random.choice(list(items - u_items), num_negative, replace=False)
+    if len(users)-1 != max(users):
+        users_dict = {users[i]: i for i in range(len(users))}
+        joined_rating_df["user"]  = joined_rating_df["user"].map(lambda x : users_dict[x])
+        users = list(set(joined_rating_df.loc[:,"user"]))
 
-    #     i_user_neg_df = pd.DataFrame({"user": [u]*num_negative, "item": i_user_neg_item, "rating": [0]*num_negative})
-    #     if first_row == True:
-    #         user_neg_dfs = i_user_neg_df
-    #         first_row = False
-    #     else:
-    #         user_neg_dfs = pd.concat([user_neg_dfs, i_user_neg_df], axis = 0, sort=False)
+    if len(items)-1 != max(items):
+        items_dict = {items[i]: i for i in range(len(items))}
+        joined_rating_df["item"]  = joined_rating_df["item"].map(lambda x : items_dict[x])
+        items =  list(set((joined_rating_df.loc[:, "item"])))
 
-    # raw_rating_df = pd.concat([raw_rating_df, user_neg_dfs], axis = 0, sort=False)
+    joined_rating_df = joined_rating_df.sort_values(by=["user"])
+    joined_rating_df.reset_index(drop=True, inplace=True)
 
-    # # 4. Join dfs
-    # joined_rating_df = pd.merge(raw_rating_df, raw_genre_df, left_on="iztem", right_on="item", how="inner")
-    # users = list(set(joined_rating_df.loc[:,"user"]))
-    # users.sort()
-    # items =  list(set((joined_rating_df.loc[:, "item"])))
-    # items.sort()
-    # genres =  list(set((joined_rating_df.loc[:, "genre"])))
-    # genres.sort()
+    ################### split
 
-    # if len(users)-1 != max(users):
-    #     users_dict = {users[i]: i for i in range(len(users))}
-    #     joined_rating_df["user"]  = joined_rating_df["user"].map(lambda x : users_dict[x])
-    #     users = list(set(joined_rating_df.loc[:,"user"]))
+    train_ratio = 0.8
+    valid_ratio = 0.1
 
-    # if len(items)-1 != max(items):
-    #     items_dict = {items[i]: i for i in range(len(items))}
-    #     joined_rating_df["item"]  = joined_rating_df["item"].map(lambda x : items_dict[x])
-    #     items =  list(set((joined_rating_df.loc[:, "item"])))
+    total_size = len(joined_rating_df)
+    train_size = int(train_ratio * total_size)
+    valid_size = int(valid_ratio * total_size)
+    test_size = total_size - train_size - valid_size
 
-    # joined_rating_df = joined_rating_df.sort_values(by=["user"])
-    # joined_rating_df.reset_index(drop=True, inplace=True)
+    train_df, temp_df = random_split(joined_rating_df, [train_size, valid_size + test_size])
+    valid_df, test_df = random_split(temp_df, [valid_size, test_size])
+
+    ################### matrix
+
+    def df_to_matrix(df):
+        user_seq = []
+        lines = df.groupby("user")["item"].apply(list)
+        for line in lines:
+            user_seq.append(items)
+
+        row = []
+        col = []
+        data = []
+        for user_id, item_list in enumerate(user_seq):
+            for item in item_list: 
+                row.append(user_id)
+                col.append(item)
+                data.append(1)
+
+        row = np.array(row)
+        col = np.array(col)
+        data = np.array(data)
+        rating_matrix = csr_matrix((data, (row, col)), shape=(train_df["user"].nunique(), train_df["item"].nunique()))
+        return rating_matrix
+    
+    valid_rating_matrix = df_to_matrix(valid_df)
+    test_rating_matrix = df_to_matrix(test_df)
+
+    # 3. Negative instance 생성
+    print("Create Nagetive instances")
+    def negative_sampling(raw_rating_df):
+        num_negative = 50
+        user_group_dfs = list(raw_rating_df.groupby("user")["item"])
+        first_row = True
+        user_neg_dfs = pd.DataFrame()
+
+        for u, u_items in tqdm(user_group_dfs):
+            u_items = set(u_items)
+            i_user_neg_item = np.random.choice(list(items - u_items), num_negative, replace=False)
+
+            i_user_neg_df = pd.DataFrame({"user": [u]*num_negative, "item": i_user_neg_item, "rating": [0]*num_negative})
+            if first_row == True:
+                user_neg_dfs = i_user_neg_df
+                first_row = False
+            else:
+                user_neg_dfs = pd.concat([user_neg_dfs, i_user_neg_df], axis = 0, sort=False)
+
+        raw_rating_df = pd.concat([raw_rating_df, user_neg_dfs], axis = 0, sort=False)
+        return raw_rating_df
+
+    train_df = negative_sampling(train_df)
+    valid_df = negative_sampling(valid_df)
+    test_df = negative_sampling(test_df)
+    
 
     # joined_rating_df.to_csv(os.path.join("output/", "joined_rating_df.csv"), index=False)
+    # joined_rating_df = pd.read_csv("output/joined_rating_df.csv")
 
-    joined_rating_df = pd.read_csv("output/joined_rating_df.csv")
+    ################### dataloader
 
-    data = joined_rating_df
+    data = train_df
     users = list(set(joined_rating_df.loc[:,"user"]))
     items =  list(set((joined_rating_df.loc[:, "item"])))
     genres =  list(set((joined_rating_df.loc[:, "genre"])))
@@ -166,21 +213,63 @@ def main():
             return self.target_tensor.size(0)
 
     dataset = RatingDataset(X, y)
-    train_ratio = 0.8
-    valid_ratio = 0.1
-    test_ratio = 0.1
 
-    total_size = len(data)
-    train_size = int(train_ratio * total_size)
-    valid_size = int(valid_ratio * total_size)
-    test_size = total_size - train_size - valid_size
+    train_loader = DataLoader(dataset, batch_size=1024, shuffle=True)
 
-    train_dataset, temp_dataset = random_split(dataset, [train_size, valid_size + test_size])
-    valid_dataset, test_dataset = random_split(temp_dataset, [valid_size, test_size])
+    data = valid_df
+    users = list(set(joined_rating_df.loc[:,"user"]))
+    items =  list(set((joined_rating_df.loc[:, "item"])))
+    genres =  list(set((joined_rating_df.loc[:, "genre"])))
 
-    train_loader = DataLoader(train_dataset, batch_size=1024, shuffle=True)
-    valid_loader = DataLoader(valid_dataset, batch_size=512, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=512, shuffle=False)
+    n_data = len(data)
+    n_user = len(users)
+    n_item = len(items)
+    n_genre = len(genres)
+
+    #6. feature matrix X, label tensor y 생성
+    user_col = torch.tensor(data.loc[:,"user"])
+    item_col = torch.tensor(data.loc[:,"item"])
+    genre_col = torch.tensor(data.loc[:,"genre"])
+
+    offsets = [0, n_user, n_user + n_item]
+    for col, offset in zip([user_col, item_col, genre_col], offsets):
+        col += offset
+
+    X = torch.cat([user_col.unsqueeze(1), item_col.unsqueeze(1), genre_col.unsqueeze(1)], dim=1)
+    y = torch.tensor(list(data.loc[:,"rating"]))
+
+    dataset = RatingDataset(X, y)
+
+    valid_loader = DataLoader(dataset, batch_size=1024, shuffle=True)
+
+    data = test_df
+    users = list(set(joined_rating_df.loc[:,"user"]))
+    items =  list(set((joined_rating_df.loc[:, "item"])))
+    genres =  list(set((joined_rating_df.loc[:, "genre"])))
+
+    n_data = len(data)
+    n_user = len(users)
+    n_item = len(items)
+    n_genre = len(genres)
+
+    #6. feature matrix X, label tensor y 생성
+    user_col = torch.tensor(data.loc[:,"user"])
+    item_col = torch.tensor(data.loc[:,"item"])
+    genre_col = torch.tensor(data.loc[:,"genre"])
+
+    offsets = [0, n_user, n_user + n_item]
+    for col, offset in zip([user_col, item_col, genre_col], offsets):
+        col += offset
+
+    X = torch.cat([user_col.unsqueeze(1), item_col.unsqueeze(1), genre_col.unsqueeze(1)], dim=1)
+    y = torch.tensor(list(data.loc[:,"rating"]))
+
+    dataset = RatingDataset(X, y)
+
+    test_loader = DataLoader(dataset, batch_size=1024, shuffle=True)
+
+
+    #########################################################################################
 
     # 3. Model
     print(f"--------------- INIT {args.model_name} ---------------")
@@ -189,8 +278,9 @@ def main():
 
     # 4. Train
     print(f"--------------- {args.model_name} TRAINING ---------------")
-    trainer = getattr(trainer_module, args.model_name)(model, train_loader, valid_loader, test_loader, None, args)
-
+    train_matrix = valid_rating_matrix
+    trainer = getattr(trainer_module, args.model_name)(model, train_loader, valid_loader, test_loader, None, train_matrix, args)
+    
     checkpoint = args_str + ".pt"
     checkpoint_path = os.path.join(args.output_path, checkpoint)
     early_stopping = EarlyStopping(checkpoint_path, patience=10, verbose=True)
@@ -205,6 +295,8 @@ def main():
 
     # 5. Test
     print(f"--------------- {args.model_name} TEST ---------------")
+    trainer.train_matrix = test_rating_matrix
+    trainer.model.load_state_dict(torch.load(checkpoint_path))
     _ = trainer.test(0)
 
     wandb.log({
