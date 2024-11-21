@@ -1,5 +1,6 @@
 import os
 import re
+import scipy
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -7,6 +8,7 @@ import seaborn as sns
 from sklearn.preprocessing import MultiLabelBinarizer
 from tqdm import tqdm
 from typing import Tuple
+from scipy.sparse import csr_matrix
 
 
 # 피벗별로 상위 k개의 레벨만 남기기
@@ -17,7 +19,7 @@ def filter_top_k_by_count(
         top_k: int,
         ascending: bool = False
     ) -> pd.DataFrame:
-    """아이템별 범주를 인기 순으로 k개만 추출합니다.
+    """아이템(유저)별 범주를 빈도 순으로 k개만 추출합니다.
 
     Args:
         df (pd.DataFrame): 원본 데이터프레임
@@ -36,7 +38,7 @@ def filter_top_k_by_count(
     # 2. 원본 데이터프레임에 레벨 count 추가
     df = df.merge(col_count, on=sel_col)
     
-    # 3. 각 피벗별로 상위 N개의 레벨 남기기
+    # 3. 피벗에서 상위 k개의 레벨 남기기
     filtered_df = df.groupby(pivot_col).apply(
         (lambda x: x.nsmallest(top_k, "count")) if ascending else (lambda x: x.nlargest(top_k, "count"))
     ).reset_index(drop=True)
@@ -65,7 +67,6 @@ def label_encoding(
     array, _ = pd.factorize(df[label_col])
     
     # 변환된 값으로 새로운 데이터프레임 생성
-    # tmp_df = df.assign(**{label_col: array})
     tmp_df = df.copy()
     tmp_df[label_col] = array
 
@@ -74,8 +75,8 @@ def label_encoding(
         grouped_df = tmp_df.groupby(pivot_col)[label_col].apply(list)
         result_df = pd.merge(tmp_df["item"], grouped_df, on="item", how="left")
         return result_df
-    else:
-        return tmp_df
+    
+    return tmp_df
 
 # 함수 정의: 멀티-핫-인코딩 하기
 def multi_hot_encoding(df: pd.DataFrame,
@@ -157,6 +158,7 @@ def replace_duplication(
         item_df: pd.DataFrame
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """중복되는 아이템이 아이템 번호가 같은 것을 제거하고, rating 데이터프레임에서는 하나의 아이템 번호로 통합합니다.
+    현재 우주전쟁(War of the Worlds, 2005) 영화가 2개의 item ID를 갖고 있습니다. 따라서 같은 영화인데 다른 item 값을 갖는 데이터 중에서 결측치가 있는 item 제거합니다.
 
     Args:
         train_ratings (pd.DataFrame): train_ratings 데이터프레임
@@ -167,8 +169,7 @@ def replace_duplication(
         - pd.DataFrame: 전처리가 완료된 train_ratings 데이터프레임
         - pd.DataFrame: 전처리가 완료된 item_df 데이터프레임 
     """
-    # 같은 영화인데 다른 item 값을 갖는 데이터 중에서 결측치가 있는 item 제거
-    # 현재 우주전쟁(War of the Worlds, 2005) 영화가 2개의 item ID를 갖고 있다.
+
     item_df = item_df[item_df["item"] != 64997]
 
     # train_ratings에서 item 값을 변경하려는 인덱스 추출
@@ -181,7 +182,7 @@ def replace_duplication(
 
 # 계층 구조로 이루어진 데이터프레임을 배열 구조로 이루어진 데이터프레임으로 변경하는 함수
 def tree2array(df: pd.DataFrame, is_array: bool) -> pd.DataFrame:
-    """계층적 구조로 이루어진 데이터프레임을 범주별 리스트 형식으로 변환합니다.
+    """계층적 구조로 이루어진 데이터프레임을 범주 리스트 형식으로 변환합니다.
 
     Args:
         df (pd.DataFrame): 원본 데이터프레임
@@ -194,7 +195,8 @@ def tree2array(df: pd.DataFrame, is_array: bool) -> pd.DataFrame:
         "director": lambda x: list(x.unique()),
         "writer": lambda x: list(x.unique())
     }
-    if is_array: rule["genre"] = lambda x: list(x.unique())
+    if is_array:
+        rule["genre"] = lambda x: list(x.unique())
     df_tolist = df.groupby(["item", "title", "year"]).agg(rule).reset_index()
 
     return df_tolist
@@ -293,3 +295,39 @@ def merge_dataset(
     item_df = pd.merge(item_df, directors, on="item", how="left")
     # item_df = pd.merge(item_df, writers, on="item", how="left")
     return item_df
+
+# sparse matrix 생성
+def df2mat(df: pd.DataFrame, merged_df: pd.DataFrame) -> scipy.sparse.csr_matrix:
+    """데이터프레임의 user-item matrix를 생성합니다.
+
+    Args:
+        df (pd.DataFrame): 훈련/검증 데이터(리뷰)
+        merged_df (pd.DataFrame): 훈련 데이터와 검증 데이터로 분할하기 전 데이터프레임
+
+    Returns:
+        scipy.sparse.csr_matrix: 희소 행렬 형태의 user-item matrix
+    """
+    if "review" in df.columns: df = df[df["review"]]
+
+    user_seq = []
+    lines = df.groupby("user")["item"].apply(list)
+    for line in lines:
+        user_seq.append(line.values)
+
+    row = []
+    col = []
+    data = []
+    for user_id, item_list in enumerate(user_seq):
+        for item in item_list: 
+            row.append(user_id)
+            col.append(item)
+            data.append(1)
+
+    row = np.array(row)
+    col = np.array(col)
+    data = np.array(data)
+    rating_matrix = csr_matrix(
+        (data, (row, col)), shape=(merged_df["user"].nunique(), merged_df["item"].nunique())
+    )
+
+    return rating_matrix
