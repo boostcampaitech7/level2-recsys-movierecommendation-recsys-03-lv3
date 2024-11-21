@@ -296,18 +296,17 @@ def merge_dataset(
     # item_df = pd.merge(item_df, writers, on="item", how="left")
     return item_df
 
-# sparse matrix 생성
-def df2mat(df: pd.DataFrame, merged_df: pd.DataFrame) -> csr_matrix:
-    """데이터프레임의 user-item matrix를 생성합니다.
+def replace_id(merged_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    유저와 아이템 ID를 0부터 시작하는 nunique까지의 숫자로 매핑하는 함수
 
     Args:
-        df (pd.DataFrame): 훈련/검증 데이터(리뷰)
-        merged_df (pd.DataFrame): 훈련 데이터와 검증 데이터로 분할하기 전 데이터프레임
+        merged_df (pd.DataFrame): 유저와 아이템 ID(user, item)를 column으로 갖는 데이터프레임
 
     Returns:
-        scipy.sparse.csr_matrix: 희소 행렬 형태의 user-item matrix
+        pd.DataFrame: 유저와 아이템 ID가 변환된 데이터프레임
     """
-    # 유저, 아이템을 zero-based index로 매핑: sparse matrix shape 조절
+    # 유저, 아이템을 zero-based index로 매핑
     users = list(set(merged_df.loc[:, "user"])).sort() # 유저 집합을 리스트로 생성
     items = list(set(merged_df.loc[:, "item"])).sort() # 아이템 집합을 리스트로 생성
     n_users = len(users)
@@ -325,8 +324,19 @@ def df2mat(df: pd.DataFrame, merged_df: pd.DataFrame) -> csr_matrix:
 
     merged_df = merged_df.sort_values(by=["user"])
     merged_df.reset_index(drop=True, inplace=True)
+    return merged_df
 
+# sparse matrix 생성
+def df2mat(df: pd.DataFrame, merged_df: pd.DataFrame) -> csr_matrix:
+    """데이터프레임의 user-item matrix를 생성합니다.
 
+    Args:
+        df (pd.DataFrame): 훈련/검증 데이터(리뷰)
+        merged_df (pd.DataFrame): 훈련 데이터와 검증 데이터로 분할하기 전 데이터프레임
+
+    Returns:
+        scipy.sparse.csr_matrix: 희소 행렬 형태의 user-item matrix
+    """
     if "review" in df.columns: df = df[df["review"]]
 
     user_seq = []
