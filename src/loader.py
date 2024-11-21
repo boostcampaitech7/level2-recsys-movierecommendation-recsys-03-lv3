@@ -3,22 +3,33 @@ import os
 import numpy as np
 import pandas as pd
 import torch
+
+from argparse import Namespace
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
-from scipy.sparse import csr_matrix
-from sklearn.model_selection import train_test_split
 
 from dataset import ContextDataset
-from preprocessing import filter_top_k_by_count, label_encoding, multi_hot_encoding, preprocess_title, tree2array, negative_sampling, pivot_count, merge_dataset, fill_na, df2mat
+from preprocessing import (
+    filter_top_k_by_count, 
+    label_encoding, 
+    multi_hot_encoding, 
+    preprocess_title, 
+    tree2array, 
+    negative_sampling, 
+    pivot_count, 
+    merge_dataset, 
+    fill_na, 
+    replace_duplication
+)
 
-def load_dataset(args) -> pd.DataFrame:
+def load_dataset(args: Namespace) -> pd.DataFrame:
     """
     데이터셋을 불러와 전처리 후 학습 데이터로 사용할 데이터프레임을 완성하는 함수
 
     Args:
-        args (_type_): 
+        args (Namespace): parser.parse_args()에서 반환되는 Namespace 객체
 
     Returns:
-        pd.DataFrame: 전처리가 완료된 
+        pd.DataFrame: 전처리 완료 후 병합된 데이터프레임
     """
     # 학습 데이터 불러오기
     train_ratings = pd.read_csv(os.path.join(args.data_path, "train_ratings.csv"))
@@ -63,48 +74,35 @@ def load_dataset(args) -> pd.DataFrame:
     if args.preprocessing.tree2array:
         item_df = tree2array(item_df, is_array=args.preprocessing.tree2array)
         
-    # 파생변수 추가
-    
+    # 파생변수 추가: 아이템별 리뷰 수(num_reviews_item)
+    train_ratings = pivot_count(train_ratings, pivot_col="item", col_name="num_reviews_item")
 
-    # train_ratings와 전처리가 끝난 item_df를 병합
+    # 전처리가 끝난 train_ratings와 item_df를 병합
     merged_train_df = pd.merge(train_ratings, item_df, on="item", how="left")
 
     # negative sampling
+    if args.preprocessing.negative_sampling:
+        merged_train_df = negative_sampling(merged_train_df)
 
     return merged_train_df
 
 
-# 전처리가 완료된 전체 학습 데이터 불러오기
-merged_train_df = load_dataset(args)
+def data_loader(
+    data: pd.DataFrame, 
+    batch_size: int, 
+    shuffle: bool = True
+) -> DataLoader:
+    """
+    데이터 로더를 생성하는 함수
 
-users = list(set(merged_train_df.loc[:, "user"])).sort() # 유저 집합을 리스트로 생성
-items = list(set(merged_train_df.loc[:, "item"])).sort() # 아이템 집합을 리스트로 생성
-n_users = len(users)
-n_items = len(items)
+    Args:
+        data (pd.DataFrame): 학습, 검증, 테스트 데이터프레임
+        batch_size (int): 배치 크기
+        shuffle (bool): 배치 셔플 유무. 디폴트는 True
 
-if (n_users - 1) != max(users):
-    users_dict = {users[i]: i for i in range(n_users)}
-    merged_train_df["user"]  = merged_train_df["user"].map(lambda x : users_dict[x])
-    users = list(set(merged_train_df.loc[:,"user"]))
-
-if (n_items - 1) != max(items):
-    items_dict = {items[i]: i for i in range(n_items)}
-    merged_train_df["item"]  = merged_train_df["item"].map(lambda x : items_dict[x])
-    items =  list(set((merged_train_df.loc[:, "item"])))
-
-merged_train_df = merged_train_df.sort_values(by=["user"])
-merged_train_df.reset_index(drop=True, inplace=True)
-
-# 데이터 분할
-train_df, temp_df = train_test_split(merged_train_df, test_size=0.2, random_state=args.seed)
-valid_df, test_df = train_test_split(temp_df, test_size=0.5, random_state=args.seed)
-
-# sparse matrix 생성    
-valid_rating_matrix = df2mat(valid_df, merged_train_df)
-test_rating_matrix = df2mat(test_df, merged_train_df)
-
-
-def data_loader(data, batch_size, shuffle):
+    Returns:
+        DataLoader: torch.utils의 DataLoader 객체
+    """
     user_col = torch.tensor(data.loc[:,"user"])
     item_col = torch.tensor(data.loc[:,"item"])
     genre_col = torch.tensor(data.loc[:,"genre"])
@@ -125,7 +123,3 @@ def data_loader(data, batch_size, shuffle):
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
 
     return dataloader
-
-train_loader = data_loader(train_df, batch_size=1024, shuffle=True)
-valid_loader = data_loader(valid_df, batch_size=512, shuffle=False)
-test_loader = data_loader(test_df, batch_size=512, shuffle=False)
