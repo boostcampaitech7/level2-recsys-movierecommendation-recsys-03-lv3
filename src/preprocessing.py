@@ -159,7 +159,7 @@ def pivot_count(df: pd.DataFrame,
         col_name (str): pivot_col에서 계산된 카운트 값을 포함할 새로운 변수명
 
     Returns:
-        pd.DataFrame: _description_
+        pd.DataFrame: 최종 데이터프레임을 반환
     """
 
     if 'review' in df.columns:
