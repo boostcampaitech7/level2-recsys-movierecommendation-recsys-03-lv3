@@ -204,15 +204,16 @@ def negative_sampling(
         num_negative: int
     ) -> pd.DataFrame:
     """
+    주어진 데이터프레임의 각 사용자에 대해 부정 샘플을 생성하고, 긍정 샘플과 결합하여 최종 데이터프레임을 반환합니다.
 
     Args:
         df (pd.DataFrame): user_col과 item_col을 column으로 갖는 데이터프레임
-        user_col (str): _description_
-        item_col (str): _description_
-        num_negative (int): _description_
+        user_col (str):  데이터프레임에서 사용자 ID를 나타내는 변수명
+        item_col (str): 데이터프레임에서 아이템 ID를 나타내는 변수명
+        num_negative (int): negative sample의 수
 
     Returns:
-        pd.DataFrame: negative_sampling
+        pd.DataFrame: 기존 데이터프레임에 부정 샘플까지 결합한 데이터프레임 반환
     """
 
     df['review'] = 1
@@ -236,21 +237,21 @@ def negative_sampling(
     raw_rating_df = pd.concat([df, user_neg_dfs], axis = 0, sort=False) 
     
     return raw_rating_df
-
+ 
+# pivot_col 기준으로 카운팅하기
 def pivot_count(df: pd.DataFrame,
                 pivot_col: str,
                 col_name: str,
                 ) -> pd.DataFrame:
     """
-    _summary_
-
+    주어진 데이터프레임에서 특정 열의 값에 대한 카운트를 계산하고, 그 결과를 새로운 열로 추가하여 최종 데이터프레임을 반환합니다.
     Args:
-        df (pd.DataFrame): _description_
-        pivot_col (str): _description_
-        col_name (str): _description_
+        df (pd.DataFrame): 분석할 데이터프레임
+        pivot_col (str): 데이터프레임에서 피벗할 변수명
+        col_name (str): pivot_col에서 계산된 카운트 값을 포함할 새로운 변수명
 
     Returns:
-        pd.DataFrame: _description_
+        pd.DataFrame: 최종 데이터프레임을 반환
     """
 
     if 'review' in df.columns:
