@@ -107,7 +107,7 @@ def main():
     joined_rating_df = joined_rating_df.sort_values(by=["user"])
     joined_rating_df.reset_index(drop=True, inplace=True)
 
-    ################### split
+    # ################### split
 
     # train_ratio = 0.8
     # valid_ratio = 0.1
@@ -148,40 +148,42 @@ def main():
     valid_rating_matrix = df_to_matrix(valid_df)
     test_rating_matrix = df_to_matrix(test_df)
 
-    # 3. Negative instance 생성
-    print("Create Nagetive instances")
-    def negative_sampling(raw_rating_df):
-        num_negative = 50
-        user_group_dfs = list(raw_rating_df.groupby("user")["item"])
-        first_row = True
-        user_neg_dfs = pd.DataFrame()
+    # # 3. Negative instance 생성
+    # print("Create Nagetive instances")
+    # def negative_sampling(raw_rating_df):
+    #     num_negative = 50
+    #     user_group_dfs = list(raw_rating_df.groupby("user")["item"])
+    #     first_row = True
+    #     user_neg_dfs = pd.DataFrame()
 
-        items =  set((raw_rating_df.loc[:, "item"]))
-        for u, u_items in tqdm(user_group_dfs):
-            u_items = set(u_items)
-            i_user_neg_item = np.random.choice(list(items - u_items), num_negative, replace=False)
+    #     items =  set((raw_rating_df.loc[:, "item"]))
+    #     for u, u_items in tqdm(user_group_dfs):
+    #         u_items = set(u_items)
+    #         i_user_neg_item = np.random.choice(list(items - u_items), num_negative, replace=False)
 
-            i_user_neg_df = pd.DataFrame({"user": [u]*num_negative, "item": i_user_neg_item, "rating": [0]*num_negative})
-            if first_row == True:
-                user_neg_dfs = i_user_neg_df
-                first_row = False
-            else:
-                user_neg_dfs = pd.concat([user_neg_dfs, i_user_neg_df], axis = 0, sort=False)
+    #         i_user_neg_df = pd.DataFrame({"user": [u]*num_negative, "item": i_user_neg_item, "rating": [0]*num_negative})
+    #         if first_row == True:
+    #             user_neg_dfs = i_user_neg_df
+    #             first_row = False
+    #         else:
+    #             user_neg_dfs = pd.concat([user_neg_dfs, i_user_neg_df], axis = 0, sort=False)
 
-        raw_rating_df = pd.concat([raw_rating_df, user_neg_dfs], axis = 0, sort=False)
-        return raw_rating_df
+    #     raw_rating_df = pd.concat([raw_rating_df, user_neg_dfs], axis = 0, sort=False)
+    #     return raw_rating_df
 
-    train_df = negative_sampling(train_df)
-    valid_df = negative_sampling(valid_df)
-    test_df = negative_sampling(test_df)
+    # train_df = negative_sampling(train_df)
+    # valid_df = negative_sampling(valid_df)
+    # test_df = negative_sampling(test_df)
     
 
-    train_df.to_csv(os.path.join("output/", "train_df.csv"), index=False)
-    valid_df.to_csv(os.path.join("output/", "valid_df.csv"), index=False)
-    test_df.to_csv(os.path.join("output/", "test_df.csv"), index=False)
+    # train_df.to_csv(os.path.join("output/", "train_df.csv"), index=False)
+    # valid_df.to_csv(os.path.join("output/", "valid_df.csv"), index=False)
+    # test_df.to_csv(os.path.join("output/", "test_df.csv"), index=False)
+    # test_df.to_csv(os.path.join("output/", "joined_rating_df.csv"), index=False)
     train_df = pd.read_csv("output/train_df.csv")
     valid_df = pd.read_csv("output/valid_df.csv")
     test_df = pd.read_csv("output/test_df.csv")
+    joined_rating_df = pd.read_csv("output/joined_rating_df.csv")
 
     ################### dataloader
 
