@@ -110,31 +110,32 @@ def multi_hot_encoding(df: pd.DataFrame,
     return result_df
 
 # 정규표현식을 활용한 title 텍스트 전처리 함수
-def preprocess_title(title_df: pd.Series) -> pd.Series:
+def preprocess_title(df: pd.DataFrame, col: str = "title") -> pd.DataFrame:
     """정규 표현식을 이용해 title 변수의 텍스트를 전처리합니다.
 
     Args:
-        title_df (pd.DataFrame): title 변수 열
+        df (pd.DataFrame): 원본 데이터프레임
+        col (str): 전처리할 열 이름. title이 기본값이며 이외에 사용하지 않음.
 
     Returns:
-        pd.DataFrame: 전처리가 완료된 title 변수
+        pd.DataFrame: 전처리가 완료된 데이터프레임
     """
     # 1. 따옴표(”, ‘) 제거
-    title_df = re.sub(r'^[\'"](.*)[\'"]$', r'\1', title_df)
+    df[col] = re.sub(r'^[\'"](.*)[\'"]$', r'\1', df[col])
     
     # 2. 영문 제목만 추출
-    title_df = re.match(r'^[^(]+', title_df).group().strip() if re.match(r'^[^(]+', title_df) else title_df
+    df[col] = re.match(r'^[^(]+', df[col]).group().strip() if re.match(r'^[^(]+', df[col]) else df[col]
     
     # 3. "~, The", "~, A", "~, An" 형태를 "The ~", "A ~", "An ~"으로 변경
-    title_df = re.sub(r'^(.*),\s(The|A|An)$', r'\2 \1', title_df)
+    df[col] = re.sub(r'^(.*),\s(The|A|An)$', r'\2 \1', df[col])
     
     # 4. 특수문자 제거
-    title_df = re.sub(r'[^a-zA-Z0-9\s]', '', title_df)
+    df[col] = re.sub(r'[^a-zA-Z0-9\s]', '', df[col])
     
     # 5. 소문자로 변환
-    title_df = title_df.lower()
+    df[col] = df[col].lower()
     
-    return title_df
+    return df
 
 def fill_na(
         df: pd.DataFrame,
@@ -288,5 +289,5 @@ def merge_dataset(
     item_df = pd.merge(titles, years, on="item", how="left")
     item_df = pd.merge(item_df, genres, on="item", how="left")
     item_df = pd.merge(item_df, directors, on="item", how="left")
-    item_df = pd.merge(item_df, writers, on="item", how="left")
+    # item_df = pd.merge(item_df, writers, on="item", how="left")
     return item_df
