@@ -180,20 +180,22 @@ def replace_duplication(
     return train_ratings, item_df
 
 # 계층 구조로 이루어진 데이터프레임을 배열 구조로 이루어진 데이터프레임으로 변경하는 함수
-def tree2array(df: pd.DataFrame) -> pd.DataFrame:
+def tree2array(df: pd.DataFrame, is_array: bool) -> pd.DataFrame:
     """계층적 구조로 이루어진 데이터프레임을 범주별 리스트 형식으로 변환합니다.
 
     Args:
         df (pd.DataFrame): 원본 데이터프레임
+        is_array (bool): 장르 변수를 배열 형태로 나타낼지 여부
 
     Returns:
         pd.DataFrame: 변환된 데이터프레임
     """
-    df_tolist = df.groupby(["item", "title", "year"]).agg({
-        "genre": lambda x: list(x.unique()),
+    rule = {
         "director": lambda x: list(x.unique()),
         "writer": lambda x: list(x.unique())
-    }).reset_index()
+    }
+    if is_array: rule["genre"] = lambda x: list(x.unique())
+    df_tolist = df.groupby(["item", "title", "year"]).agg(rule).reset_index()
 
     return df_tolist
 
