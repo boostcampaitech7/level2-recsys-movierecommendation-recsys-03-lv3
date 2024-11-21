@@ -7,7 +7,7 @@ import pandas as pd
 from torch.utils.data import Dataset
 
 
-class GeneralDataset(Dataset):
+class ContextDataset(Dataset):
     def __init__(self, args, X: pd.DataFrame, y: pd.Series):
         self.args = args
         self.X = torch.LongTensor(X)
