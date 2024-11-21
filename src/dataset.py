@@ -1,9 +1,5 @@
-# 데이터 경로 받아서(argparser)
-# 데이터 로드한 다음에
-# 모델별로 데이터셋 클래스 만들기
-
-import torch
 import pandas as pd
+import torch
 from torch.utils.data import Dataset
 
 
@@ -16,5 +12,5 @@ class ContextDataset(Dataset):
     def __len__(self):
         return len(self.X).shape[0]
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: int):
         return self.X[index], self.y[index]
