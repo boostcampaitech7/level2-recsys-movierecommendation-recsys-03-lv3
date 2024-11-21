@@ -297,7 +297,7 @@ def merge_dataset(
     return item_df
 
 # sparse matrix 생성
-def df2mat(df: pd.DataFrame, merged_df: pd.DataFrame) -> scipy.sparse.csr_matrix:
+def df2mat(df: pd.DataFrame, merged_df: pd.DataFrame) -> csr_matrix:
     """데이터프레임의 user-item matrix를 생성합니다.
 
     Args:
@@ -307,6 +307,26 @@ def df2mat(df: pd.DataFrame, merged_df: pd.DataFrame) -> scipy.sparse.csr_matrix
     Returns:
         scipy.sparse.csr_matrix: 희소 행렬 형태의 user-item matrix
     """
+    # 유저, 아이템을 zero-based index로 매핑: sparse matrix shape 조절
+    users = list(set(merged_df.loc[:, "user"])).sort() # 유저 집합을 리스트로 생성
+    items = list(set(merged_df.loc[:, "item"])).sort() # 아이템 집합을 리스트로 생성
+    n_users = len(users)
+    n_items = len(items)
+
+    if (n_users - 1) != max(users):
+        users_dict = {users[i]: i for i in range(n_users)}
+        merged_df["user"]  = merged_df["user"].map(lambda x : users_dict[x])
+        users = list(set(merged_df.loc[:,"user"]))
+
+    if (n_items - 1) != max(items):
+        items_dict = {items[i]: i for i in range(n_items)}
+        merged_df["item"]  = merged_df["item"].map(lambda x : items_dict[x])
+        items =  list(set((merged_df.loc[:, "item"])))
+
+    merged_df = merged_df.sort_values(by=["user"])
+    merged_df.reset_index(drop=True, inplace=True)
+
+
     if "review" in df.columns: df = df[df["review"]]
 
     user_seq = []
