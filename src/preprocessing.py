@@ -6,10 +6,29 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.preprocessing import MultiLabelBinarizer
 from tqdm import tqdm
+from typing import Tuple
 
 
 # 피벗별로 상위 k개의 레벨만 남기기
-def filter_top_k_by_count(df, sel_col, pivot_col, top_k, ascending=False):
+def filter_top_k_by_count(
+        df: pd.DataFrame,
+        sel_col: str,
+        pivot_col: str,
+        top_k: int,
+        ascending: bool = False
+    ) -> pd.DataFrame:
+    """아이템별 범주를 인기 순으로 k개만 추출합니다.
+
+    Args:
+        df (pd.DataFrame): 원본 데이터프레임
+        sel_col (str): 범주형 데이터 열 이름
+        pivot_col (str): 기준으로 할 열 이름
+        top_k (int): 몇 개를 추출할지 결정하는 정수
+        ascending (bool, optional): 추출 기준을 오름차순으로 할 지 여부. False가 기본값임.
+
+    Returns:
+        pd.DataFrame: 전처리가 완료된 데이터프레임
+    """
     # 1. 레벨별 전체 등장 빈도 계산
     col_count = df[sel_col].value_counts().reset_index()
     col_count.columns = [sel_col, "count"]
@@ -27,7 +46,21 @@ def filter_top_k_by_count(df, sel_col, pivot_col, top_k, ascending=False):
     
     return result_df
 
-def label_encoding(df, label_col, pivot_col, to_list=True):
+def label_encoding(
+        df: pd.DataFrame,
+        label_col: str,
+        pivot_col: str = None,
+    ) -> pd.DataFrame:
+    """데이터프레임에 라벨 인코딩을 적용합니다.
+
+    Args:
+        df (pd.DataFrame): 원본 데이터프레임
+        label_col (str): 인코딩을 할 열의 이름
+        pivot_col (str): 배열 형태로 나타낼 때의 기준 열의 이름. None으로 입력하면 계층적 표현으로 반환.
+
+    Returns:
+        pd.DataFrame: 인코딩이 적용된 데이터프레임
+    """
     # 범주형 자료를 수치형으로 변환
     array, _ = pd.factorize(df[label_col])
     
@@ -36,7 +69,7 @@ def label_encoding(df, label_col, pivot_col, to_list=True):
     tmp_df = df.copy()
     tmp_df[label_col] = array
 
-    if to_list:
+    if pivot_col != None:
         # 리스트 형태로 변환 후 데이터프레임 반환
         grouped_df = tmp_df.groupby(pivot_col)[label_col].apply(list)
         result_df = pd.merge(tmp_df["item"], grouped_df, on="item", how="left")
@@ -77,27 +110,85 @@ def multi_hot_encoding(df: pd.DataFrame,
     return result_df
 
 # 정규표현식을 활용한 title 텍스트 전처리 함수
-def preprocess_title(title):
+def preprocess_title(title_df: pd.Series) -> pd.Series:
+    """정규 표현식을 이용해 title 변수의 텍스트를 전처리합니다.
+
+    Args:
+        title_df (pd.DataFrame): title 변수 열
+
+    Returns:
+        pd.DataFrame: 전처리가 완료된 title 변수
+    """
     # 1. 따옴표(”, ‘) 제거
-    title = re.sub(r'^[\'"](.*)[\'"]$', r'\1', title)
+    title_df = re.sub(r'^[\'"](.*)[\'"]$', r'\1', title_df)
     
     # 2. 영문 제목만 추출
-    title = re.match(r'^[^(]+', title).group().strip() if re.match(r'^[^(]+', title) else title
+    title_df = re.match(r'^[^(]+', title_df).group().strip() if re.match(r'^[^(]+', title_df) else title_df
     
     # 3. "~, The", "~, A", "~, An" 형태를 "The ~", "A ~", "An ~"으로 변경
-    title = re.sub(r'^(.*),\s(The|A|An)$', r'\2 \1', title)
+    title_df = re.sub(r'^(.*),\s(The|A|An)$', r'\2 \1', title_df)
     
     # 4. 특수문자 제거
-    title = re.sub(r'[^a-zA-Z0-9\s]', '', title)
+    title_df = re.sub(r'[^a-zA-Z0-9\s]', '', title_df)
     
     # 5. 소문자로 변환
-    title = title.lower()
+    title_df = title_df.lower()
     
-    return title
+    return title_df
+
+def fill_na(
+        df: pd.DataFrame,
+        col: str,
+    ) -> pd.DataFrame:
+    match col:
+        case "year":
+            df[col] = df[col].fillna(
+                df["title"].str.extract(r"\((\d{4})\)", expand=False)  # 괄호 안 네 자리 숫자를 추출하는 정규표현식
+            ).astype("int64")
+
+        case _:
+            df[col] = df[col].fillna("unknown")
+    
+    return df
+
+def replace_duplication(
+        train_ratings: pd.DataFrame,
+        item_df: pd.DataFrame
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """중복되는 아이템이 아이템 번호가 같은 것을 제거하고, rating 데이터프레임에서는 하나의 아이템 번호로 통합합니다.
+
+    Args:
+        train_ratings (pd.DataFrame): train_ratings 데이터프레임
+        item_df (pd.DataFrame): item_df 데이터프레임
+
+    Returns:
+        Tuple
+        - pd.DataFrame: 전처리가 완료된 train_ratings 데이터프레임
+        - pd.DataFrame: 전처리가 완료된 item_df 데이터프레임 
+    """
+    # 같은 영화인데 다른 item 값을 갖는 데이터 중에서 결측치가 있는 item 제거
+    # 현재 우주전쟁(War of the Worlds, 2005) 영화가 2개의 item ID를 갖고 있다.
+    item_df = item_df[item_df["item"] != 64997]
+
+    # train_ratings에서 item 값을 변경하려는 인덱스 추출
+    idx = train_ratings[(train_ratings["item"] == 64997)].index
+
+    # train_ratings에 원하는 item 값으로 변경
+    train_ratings.loc[idx, "item"] = 34048
+
+    return train_ratings, item_df
 
 # 계층 구조로 이루어진 데이터프레임을 배열 구조로 이루어진 데이터프레임으로 변경하는 함수
-def tree2array(df):
-    df_tolist = item_df.groupby(["item", "title", "year"]).agg({
+def tree2array(df: pd.DataFrame) -> pd.DataFrame:
+    """계층적 구조로 이루어진 데이터프레임을 범주별 리스트 형식으로 변환합니다.
+
+    Args:
+        df (pd.DataFrame): 원본 데이터프레임
+
+    Returns:
+        pd.DataFrame: 변환된 데이터프레임
+    """
+    df_tolist = df.groupby(["item", "title", "year"]).agg({
         "genre": lambda x: list(x.unique()),
         "director": lambda x: list(x.unique()),
         "writer": lambda x: list(x.unique())
@@ -106,19 +197,19 @@ def tree2array(df):
     return df_tolist
 
 # 함수 정의: num_negative만큼 negative_sampling하기
-def negative_sampling(df:pd.DataFrame,
-                      user_col: str,
-                      item_col: str,
-                      num_negative: float
-                      ) -> pd.DataFrame:
+def negative_sampling(
+        df: pd.DataFrame,
+        user_col: str,
+        item_col: str,
+        num_negative: int
+    ) -> pd.DataFrame:
     """
-    _summary_
 
     Args:
         df (pd.DataFrame): user_col과 item_col을 column으로 갖는 데이터프레임
         user_col (str): _description_
         item_col (str): _description_
-        num_negative (float): _description_
+        num_negative (int): _description_
 
     Returns:
         pd.DataFrame: negative_sampling
