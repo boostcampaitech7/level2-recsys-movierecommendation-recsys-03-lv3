@@ -10,6 +10,7 @@ import wandb
 import json
 from tqdm import tqdm
 from scipy.sparse import csr_matrix
+from sklearn.model_selection import train_test_split
 
 from src.utils import set_seed, check_path, EarlyStopping
 import src.model as model_module
@@ -108,16 +109,18 @@ def main():
 
     ################### split
 
-    train_ratio = 0.8
-    valid_ratio = 0.1
+    # train_ratio = 0.8
+    # valid_ratio = 0.1
 
-    total_size = len(joined_rating_df)
-    train_size = int(train_ratio * total_size)
-    valid_size = int(valid_ratio * total_size)
-    test_size = total_size - train_size - valid_size
+    # total_size = len(joined_rating_df)
+    # train_size = int(train_ratio * total_size)
+    # valid_size = int(valid_ratio * total_size)
+    # test_size = total_size - train_size - valid_size
 
-    train_df, temp_df = random_split(joined_rating_df, [train_size, valid_size + test_size])
-    valid_df, test_df = random_split(temp_df, [valid_size, test_size])
+    # train_df, temp_df = random_split(joined_rating_df, [train_size, valid_size + test_size])
+    # valid_df, test_df = random_split(temp_df, [valid_size, test_size])
+    train_df, temp_df = train_test_split(joined_rating_df, test_size=0.2, random_state=42)
+    valid_df, test_df = train_test_split(temp_df, test_size=0.5, random_state=42)
 
     ################### matrix
 
@@ -153,6 +156,7 @@ def main():
         first_row = True
         user_neg_dfs = pd.DataFrame()
 
+        items =  set((raw_rating_df.loc[:, "item"]))
         for u, u_items in tqdm(user_group_dfs):
             u_items = set(u_items)
             i_user_neg_item = np.random.choice(list(items - u_items), num_negative, replace=False)
@@ -172,35 +176,23 @@ def main():
     test_df = negative_sampling(test_df)
     
 
-    # joined_rating_df.to_csv(os.path.join("output/", "joined_rating_df.csv"), index=False)
-    # joined_rating_df = pd.read_csv("output/joined_rating_df.csv")
+    train_df.to_csv(os.path.join("output/", "train_df.csv"), index=False)
+    valid_df.to_csv(os.path.join("output/", "valid_df.csv"), index=False)
+    test_df.to_csv(os.path.join("output/", "test_df.csv"), index=False)
+    train_df = pd.read_csv("output/train_df.csv")
+    valid_df = pd.read_csv("output/valid_df.csv")
+    test_df = pd.read_csv("output/test_df.csv")
 
     ################### dataloader
 
-    data = train_df
     users = list(set(joined_rating_df.loc[:,"user"]))
     items =  list(set((joined_rating_df.loc[:, "item"])))
     genres =  list(set((joined_rating_df.loc[:, "genre"])))
-
-    n_data = len(data)
     n_user = len(users)
     n_item = len(items)
     n_genre = len(genres)
 
     #6. feature matrix X, label tensor y 생성
-    user_col = torch.tensor(data.loc[:,"user"])
-    item_col = torch.tensor(data.loc[:,"item"])
-    genre_col = torch.tensor(data.loc[:,"genre"])
-
-    offsets = [0, n_user, n_user + n_item]
-    for col, offset in zip([user_col, item_col, genre_col], offsets):
-        col += offset
-
-    X = torch.cat([user_col.unsqueeze(1), item_col.unsqueeze(1), genre_col.unsqueeze(1)], dim=1)
-    y = torch.tensor(list(data.loc[:,"rating"]))
-
-
-    #7. data loader 생성
     class RatingDataset(Dataset):
         def __init__(self, input_tensor, target_tensor):
             self.input_tensor = input_tensor.long()
@@ -212,62 +204,31 @@ def main():
         def __len__(self):
             return self.target_tensor.size(0)
 
-    dataset = RatingDataset(X, y)
+    def df_to_dataloader(data, batch_size, shuffle):
+        user_col = torch.tensor(data.loc[:,"user"])
+        item_col = torch.tensor(data.loc[:,"item"])
+        genre_col = torch.tensor(data.loc[:,"genre"])
 
-    train_loader = DataLoader(dataset, batch_size=1024, shuffle=True)
+        users = list(set(data.loc[:,"user"]))
+        items =  list(set((data.loc[:, "item"])))
+        n_user = len(users)
+        n_item = len(items)
 
-    data = valid_df
-    users = list(set(joined_rating_df.loc[:,"user"]))
-    items =  list(set((joined_rating_df.loc[:, "item"])))
-    genres =  list(set((joined_rating_df.loc[:, "genre"])))
+        offsets = [0, n_user, n_user + n_item]
+        for col, offset in zip([user_col, item_col, genre_col], offsets):
+            col += offset
 
-    n_data = len(data)
-    n_user = len(users)
-    n_item = len(items)
-    n_genre = len(genres)
+        X = torch.cat([user_col.unsqueeze(1), item_col.unsqueeze(1), genre_col.unsqueeze(1)], dim=1)
+        y = torch.tensor(list(data.loc[:,"rating"]))
 
-    #6. feature matrix X, label tensor y 생성
-    user_col = torch.tensor(data.loc[:,"user"])
-    item_col = torch.tensor(data.loc[:,"item"])
-    genre_col = torch.tensor(data.loc[:,"genre"])
+        dataset = RatingDataset(X, y)
+        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
 
-    offsets = [0, n_user, n_user + n_item]
-    for col, offset in zip([user_col, item_col, genre_col], offsets):
-        col += offset
-
-    X = torch.cat([user_col.unsqueeze(1), item_col.unsqueeze(1), genre_col.unsqueeze(1)], dim=1)
-    y = torch.tensor(list(data.loc[:,"rating"]))
-
-    dataset = RatingDataset(X, y)
-
-    valid_loader = DataLoader(dataset, batch_size=1024, shuffle=True)
-
-    data = test_df
-    users = list(set(joined_rating_df.loc[:,"user"]))
-    items =  list(set((joined_rating_df.loc[:, "item"])))
-    genres =  list(set((joined_rating_df.loc[:, "genre"])))
-
-    n_data = len(data)
-    n_user = len(users)
-    n_item = len(items)
-    n_genre = len(genres)
-
-    #6. feature matrix X, label tensor y 생성
-    user_col = torch.tensor(data.loc[:,"user"])
-    item_col = torch.tensor(data.loc[:,"item"])
-    genre_col = torch.tensor(data.loc[:,"genre"])
-
-    offsets = [0, n_user, n_user + n_item]
-    for col, offset in zip([user_col, item_col, genre_col], offsets):
-        col += offset
-
-    X = torch.cat([user_col.unsqueeze(1), item_col.unsqueeze(1), genre_col.unsqueeze(1)], dim=1)
-    y = torch.tensor(list(data.loc[:,"rating"]))
-
-    dataset = RatingDataset(X, y)
-
-    test_loader = DataLoader(dataset, batch_size=1024, shuffle=True)
-
+        return dataloader
+    
+    train_loader = df_to_dataloader(train_df, 1024, True)
+    valid_loader = df_to_dataloader(valid_df, 512, False)
+    test_loader = df_to_dataloader(test_df, 512, False)
 
     #########################################################################################
 
