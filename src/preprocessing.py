@@ -264,3 +264,29 @@ def pivot_count(df: pd.DataFrame,
     df[col_name] =  df[pivot_col].map(pivot_count_df)
     
     return df
+
+def merge_dataset(
+        titles: pd.DataFrame, 
+        years: pd.DataFrame, 
+        genres: pd.DataFrame, 
+        directors: pd.DataFrame, 
+        writers: pd.DataFrame
+    ) -> pd.DataFrame:
+    """
+    side information을 하나의 item 데이터프레임으로 병합합니다.
+
+    Args:
+        titles (pd.DataFrame): 아이템 ID(item)와 제목(title) 정보를 담고있는 데이터프레임
+        years (pd.DataFrame): 아이템 ID(item)와 개봉연도(year) 정보를 담고있는 데이터프레임
+        genres (pd.DataFrame): 아이템 ID(item)와 장르(genre) 정보를 담고있는 데이터프레임
+        directors (pd.DataFrame): 아이템 ID(item)와 감독(director) 정보를 담고있는 데이터프레임
+        writers (pd.DataFrame): 아이템 ID(item)와 작가(writer) 정보를 담고있는 데이터프레임
+
+    Returns:
+        pd.DataFrame: side information을 모두 합친 데이터프레임
+    """
+    item_df = pd.merge(titles, years, on="item", how="left")
+    item_df = pd.merge(item_df, genres, on="item", how="left")
+    item_df = pd.merge(item_df, directors, on="item", how="left")
+    item_df = pd.merge(item_df, writers, on="item", how="left")
+    return item_df
