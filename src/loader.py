@@ -48,20 +48,24 @@ def load_dataset(args: Namespace) -> pd.DataFrame:
     _writers = filter_top_k_by_count(writers, sel_col="writer", pivot_col="item", top_k=2)
 
     # 전처리: genre, director, writer 인코딩
-    if args.preprocessing.encoding == "label":
-        _genres = label_encoding(genres, label_col="genre", pivot_col="item")
+    if args.preprocessing.is_array:
+        if args.preprocessing.encoding == "label":
+            _genres = label_encoding(genres, label_col="genre", pivot_col="item")
+        else:
+            _genres = multi_hot_encoding(genres, label_col="genre", pivot_col="item")
+        _directors = label_encoding(directors, label_col="director", pivot_col="item")
+        _writers = label_encoding(writers, label_col="writer", pivot_col="item")
     else:
-        _genres = multi_hot_encoding(genres, label_col="genre", pivot_col="item")
-
-    _directors = label_encoding(directors, label_col="director", pivot_col="item")
-    _writers = label_encoding(writers, label_col="writer", pivot_col="item")
-
+        _genres = label_encoding(genres, label_col="genre")
+        _directors = label_encoding(directors, label_col="director")
+        _writers = label_encoding(writers, label_col="writer")
+    
     # side information 데이터 item 기준으로 병합
     item_df = merge_dataset(titles, years, _genres, _directors, _writers)
 
     # 결측치 처리: side information 데이터를 병합하며서 생겨난 결측치 대체
-    item_df = fill_na(item_df, col="director") # "unknown"으로 결측치 대체
-    # item_df = fill_na(item_df, col="writer") # "unknown"으로 결측치 대체
+    item_df = fill_na(item_df, col="director") # [-1]로 결측치 대체
+    # item_df = fill_na(item_df, col="writer") # [-1]로 결측치 대체
     item_df = fill_na(item_df, col="year") # title의 괄호 안 연도를 추출해 결측치 대체
 
     # 전처리: 정규표현식 활용한 title 텍스트 전처리
@@ -71,18 +75,22 @@ def load_dataset(args: Namespace) -> pd.DataFrame:
     train_ratings, item_df = replace_duplication(train_ratings, item_df)
 
     # 계층 구조 데이터프레임을 배열 구조 데이터프레임으로 변환
-    if args.preprocessing.tree2array:
-        item_df = tree2array(item_df, is_array=args.preprocessing.tree2array)
-        
-    # 파생변수 추가: 아이템별 리뷰 수(num_reviews_item)
-    train_ratings = pivot_count(train_ratings, pivot_col="item", col_name="num_reviews_item")
+    # if args.preprocessing.tree2array:
+    #     item_df = tree2array(item_df, is_array=args.preprocessing.tree2array)
 
     # 전처리가 끝난 train_ratings와 item_df를 병합
     merged_train_df = pd.merge(train_ratings, item_df, on="item", how="left")
 
     # negative sampling
     if args.preprocessing.negative_sampling:
-        merged_train_df = negative_sampling(merged_train_df)
+        merged_train_df = negative_sampling(merged_train_df, "user", "item", num_negative=5, na_list=merged_train_df.columns[3:])
+        
+    # 파생변수 추가: 아이템별 리뷰 수(num_reviews_item)
+    merged_train_df = pivot_count(merged_train_df, pivot_col="item", col_name="num_reviews_item")
+
+    # (user, item, time)이 중복되는 경우 제거
+    # 같은 유저가 같은 아이템을 재평가(2번 이상 평가)한 사실을 시간이 다른 것으로 확인할 수 있었다.
+    merged_train_df = merged_train_df.drop_duplicates(["user", "item", "time"], ignore_index=True)
 
     return merged_train_df
 
