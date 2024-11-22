@@ -5,6 +5,7 @@ import numpy as np
 import tqdm
 import wandb
 
+from collections import defaultdict
 from .utils import recall_at_k
 
 
@@ -17,7 +18,6 @@ class Trainer:
         test_dataloader,
         submission_dataloader,
         train_matrix,
-        df,
         args,
     ):
 
@@ -34,7 +34,6 @@ class Trainer:
         self.test_dataloader = test_dataloader
         self.submission_dataloader = submission_dataloader
         self.train_matrix = train_matrix
-        self.df = df
 
         self.optim = Adam(
             self.model.parameters(),
@@ -73,7 +72,6 @@ class DeepFM(Trainer):
         test_dataloader,
         submission_dataloader,
         train_matrix,
-        df,
         args,
     ):
         super(DeepFM, self).__init__(
@@ -83,7 +81,6 @@ class DeepFM(Trainer):
             test_dataloader,
             submission_dataloader,
             train_matrix,
-            df,
             args,
         )
 
@@ -123,14 +120,15 @@ class DeepFM(Trainer):
 
             correct_result_sum = 0
             total_samples = 0
-            for i, batch in enumerate(rec_data_iter):
-                X, y = batch
-                X, y = X.to(self.device), y.to(self.device)
-                
-                output = self.model(X)
-                result = torch.round(output)
-                correct_result_sum += (result == y).sum().float()
-                total_samples += y.size(0)
+            with torch.no_grad():
+                for i, batch in enumerate(rec_data_iter):
+                    X, y = batch
+                    X, y = X.to(self.device), y.to(self.device)
+                    
+                    output = self.model(X)
+                    result = torch.round(output)
+                    correct_result_sum += (result == y).sum().float()
+                    total_samples += y.size(0)
 
             acc = correct_result_sum / total_samples * 100
             rec_data_iter.write("Final Acc : {:.2f}%".format(acc.item()))
@@ -139,9 +137,41 @@ class DeepFM(Trainer):
 
         else:
             self.model.eval()
-
-            test_df = self.df
-
             
+            outputs, users, items, answers = [], [], [], []
+            with torch.no_grad():
+                for i, batch in enumerate(rec_data_iter):
+                    X, y = batch
+                    X, y = X.to(self.device), y.to(self.device)
+
+                    output = self.model(X)
+                    outputs.append(output.cpu())
+                    users.append(X[:, 0].cpu())
+                    items.append(X[:, 1].cpu())
+                    answers.append(y[:].cpu())
+            
+            # 모든 batch의 출력을 하나의 tensor로 결합
+            all_outputs = torch.cat(outputs, dim=0)
+            all_users = torch.cat(users, dim=0)
+            all_items = torch.cat(items, dim=0)
+
+            unique_users = all_users.unique()
+            K = 10
+            for user in unique_users:
+                # 현재 사용자에 대한 평점과 아이템 ID 필터링
+                user_mask = (all_users == user)
+                user_ratings = all_outputs[user_mask]
+                user_items = all_items[user_mask]
+
+                # Top-K 아이템 추출
+                top_k_ratings, top_k_indices = torch.topk(user_ratings, K)
+                top_k_items = user_items[top_k_indices]
+
+                if user == 4058:
+                    print(f"User {user.item()}:")
+                    for item_id, rating in zip(top_k_items.numpy(), top_k_ratings.numpy()):
+                        print(f"  Item {item_id}: Rating {rating:.4f}")
+
+
 
             

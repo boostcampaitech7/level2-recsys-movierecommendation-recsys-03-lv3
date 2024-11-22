@@ -244,7 +244,7 @@ def main():
     # 4. Train
     print(f"--------------- {args.model_name} TRAINING ---------------")
     train_matrix = valid_rating_matrix
-    trainer = getattr(trainer_module, args.model_name)(model, train_loader, valid_loader, test_loader, None, train_matrix, df, args)
+    trainer = getattr(trainer_module, args.model_name)(model, train_loader, valid_loader, test_loader, None, train_matrix, args)
     
     checkpoint = args_str + ".pt"
     checkpoint_path = os.path.join(args.output_path, checkpoint)
@@ -261,7 +261,6 @@ def main():
     # 5. Test
     print(f"--------------- {args.model_name} TEST ---------------")
     trainer.train_matrix = test_rating_matrix
-    trainer.train_df = train_df
     trainer.model.load_state_dict(torch.load(checkpoint_path))
     _ = trainer.test(0)
 
