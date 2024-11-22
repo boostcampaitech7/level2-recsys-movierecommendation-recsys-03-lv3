@@ -7,8 +7,8 @@ import torch
 from argparse import Namespace
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 
-from dataset import ContextDataset
-from preprocessing import (
+from src.dataset import ContextDataset
+from src.preprocessing import (
     filter_top_k_by_count, 
     label_encoding, 
     multi_hot_encoding, 
