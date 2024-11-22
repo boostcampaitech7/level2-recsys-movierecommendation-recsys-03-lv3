@@ -154,23 +154,30 @@ class DeepFM(Trainer):
             all_outputs = torch.cat(outputs, dim=0)
             all_users = torch.cat(users, dim=0)
             all_items = torch.cat(items, dim=0)
+            all_answers = torch.cat(answers, dim=0)
 
             unique_users = all_users.unique()
+            predicted, actual = [], []
             K = 10
             for user in unique_users:
                 # 현재 사용자에 대한 평점과 아이템 ID 필터링
                 user_mask = (all_users == user)
                 user_ratings = all_outputs[user_mask]
                 user_items = all_items[user_mask]
+                user_answers = all_answers[user_mask]
 
                 # Top-K 아이템 추출
-                top_k_ratings, top_k_indices = torch.topk(user_ratings, K)
-                top_k_items = user_items[top_k_indices]
+                _, top_k_indices = torch.topk(user_ratings, K)
+                predicted.append(top_k_indices)
+                actual.append(answers)
 
+                top_k_items = user_items[top_k_indices]
                 if user == 4058:
                     print(f"User {user.item()}:")
-                    for item_id, rating in zip(top_k_items.numpy(), top_k_ratings.numpy()):
-                        print(f"  Item {item_id}: Rating {rating:.4f}")
+                    for item_id, answer in zip(user_items.numpy(), user_answers.numpy()):
+                        print(f"  Item {item_id}: Rating {answer:.4f}")
+                    for item_id in zip(top_k_items.numpy()):
+                        print(f"  Item {item_id}")
 
 
 
