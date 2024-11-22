@@ -153,6 +153,8 @@ def fill_na(
         case _:
             df[col] = df[col].fillna(-1)
             df[col] = df[col].apply(lambda x: x if type(x) == list else [x])
+            df[col] = df[col].fillna(-1)
+            df[col] = df[col].apply(lambda x: x if type(x) == list else [x])
     
     return df
 
@@ -201,6 +203,7 @@ def tree2array(
     rule = {
         "director": lambda x: list(x.unique()),
         # "writer": lambda x: list(x.unique())
+        # "writer": lambda x: list(x.unique())
     }
     if is_array:
         rule["genre"] = lambda x: list(x.unique())
@@ -213,42 +216,41 @@ def negative_sampling(
         df: pd.DataFrame,
         user_col: str,
         item_col: str,
-        num_negative: int
+        num_negative: int,
+        na_list: list[str] = ["title", "year", "genre", "director"] ####### multi-hot일 경우 로직도 만들기! ########
     ) -> pd.DataFrame:
     """
-    주어진 데이터프레임의 각 사용자에 대해 부정 샘플을 생성하고, 긍정 샘플과 결합하여 최종 데이터프레임을 반환합니다.
-
-    Args:
-        df (pd.DataFrame): user_col과 item_col을 column으로 갖는 데이터프레임
-        user_col (str):  데이터프레임에서 사용자 ID를 나타내는 변수명
-        item_col (str): 데이터프레임에서 아이템 ID를 나타내는 변수명
-        num_negative (int): negative sample의 수
-
-    Returns:
-        pd.DataFrame: 기존 데이터프레임에 부정 샘플까지 결합한 데이터프레임 반환
+    최적화된 부정 샘플링 함수.
     """
 
-    df["review"] = 1
-    user_group_dfs = list(df.groupby(user_col)[item_col])
-    first_row = True
-    user_neg_dfs = pd.DataFrame()
-    items = set(df.loc[:, item_col])
+    # 아이템 전체 집합 및 사용자별 아이템 목록 미리 생성
+    items = set(df[item_col].unique())
+    user_items_dict = df.groupby(user_col)[item_col].apply(set).to_dict()
 
-    for u, u_items in tqdm(user_group_dfs):
-        u_items = set(u_items)
-        i_user_neg_item = np.random.choice(list(items - u_items), num_negative, replace=False)
-        i_user_neg_df = pd.DataFrame({user_col: [u]*num_negative, item_col: i_user_neg_item, "review": [0]*num_negative})
-        
-        if first_row == True:
-            user_neg_dfs = i_user_neg_df
-            first_row = False
-        
-        else:
-            user_neg_dfs = pd.concat([user_neg_dfs, i_user_neg_df], axis = 0, sort=False)
+    # na_list 컬럼 데이터를 아이템별로 미리 매핑
+    item_na_map = {col: df.groupby(item_col)[col].first().to_dict() for col in na_list}
 
-    raw_rating_df = pd.concat([df, user_neg_dfs], axis = 0, sort=False) 
-    
+    neg_samples = []
+
+    for user, u_items in tqdm(user_items_dict.items()):
+        # 사용자가 이미 본 아이템 제외하고 부정 샘플 선택
+        negative_items = np.random.choice(list(items - u_items), num_negative, replace=False)
+
+        # 부정 샘플 데이터 생성
+        for item in negative_items:
+            neg_sample = {user_col: user, item_col: item, "review": 0}
+            for na_col in na_list:
+                neg_sample[na_col] = item_na_map[na_col].get(item, None)
+            neg_samples.append(neg_sample)
+
+    # 부정 샘플과 기존 데이터 결합
+    neg_samples_df = pd.DataFrame(neg_samples)
+    raw_rating_df = pd.concat([df, neg_samples_df], axis=0, ignore_index=True)
+    raw_rating_df["review"] = raw_rating_df["review"].fillna(1)
+    raw_rating_df["review"].astype("int64")
+
     return raw_rating_df
+
  
 # pivot_col 기준으로 카운팅하기
 def pivot_count(
@@ -258,6 +260,7 @@ def pivot_count(
     ) -> pd.DataFrame:
     """
     주어진 데이터프레임에서 특정 열의 값에 대한 카운트를 계산하고, 그 결과를 새로운 열로 추가하여 최종 데이터프레임을 반환합니다.
+
     
     Args:
         df (pd.DataFrame): 분석할 데이터프레임
@@ -268,6 +271,7 @@ def pivot_count(
         pd.DataFrame: 최종 데이터프레임을 반환
     """
 
+    if "review" in df.columns:
     if "review" in df.columns:
         positive_df =  df[df["review"]==1]
         pivot_count_df = positive_df[pivot_col].value_counts()
@@ -280,10 +284,10 @@ def pivot_count(
     return df
 
 def merge_dataset(
-        titles: pd.DataFrame, 
-        years: pd.DataFrame, 
-        genres: pd.DataFrame, 
-        directors: pd.DataFrame, 
+        titles: pd.DataFrame,
+        years: pd.DataFrame,
+        genres: pd.DataFrame,
+        directors: pd.DataFrame,
         writers: pd.DataFrame
     ) -> pd.DataFrame:
     """
