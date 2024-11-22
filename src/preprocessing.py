@@ -122,19 +122,19 @@ def preprocess_title(df: pd.DataFrame, col: str = "title") -> pd.DataFrame:
         pd.DataFrame: 전처리가 완료된 데이터프레임
     """
     # 1. 따옴표(”, ‘) 제거
-    df[col] = re.sub(r'^[\'"](.*)[\'"]$', r'\1', df[col])
+    df[col] = df[col].apply(lambda x: re.sub(r'^[\'"](.*)[\'"]$', r'\1', x))
     
     # 2. 영문 제목만 추출
-    df[col] = re.match(r'^[^(]+', df[col]).group().strip() if re.match(r'^[^(]+', df[col]) else df[col]
+    df[col] = df[col].apply(lambda x: re.match(r'^[^(]+', x).group().strip() if re.match(r'^[^(]+', x) else x)
     
     # 3. "~, The", "~, A", "~, An" 형태를 "The ~", "A ~", "An ~"으로 변경
-    df[col] = re.sub(r'^(.*),\s(The|A|An)$', r'\2 \1', df[col])
+    df[col] = df[col].apply(lambda x: re.sub(r'^(.*),\s(The|A|An)$', r'\2 \1', x))
     
     # 4. 특수문자 제거
-    df[col] = re.sub(r'[^a-zA-Z0-9\s]', '', df[col])
+    df[col] = df[col].apply(lambda x: re.sub(r'[^a-zA-Z0-9\s]', '', x))
     
     # 5. 소문자로 변환
-    df[col] = df[col].lower()
+    df[col] = df[col].apply(lambda x: x.lower())
     
     return df
 
