@@ -83,11 +83,11 @@ def load_dataset(args: Namespace) -> pd.DataFrame:
 
     # negative sampling
     if args.preprocessing.negative_sampling:
-        merged_train_df = negative_sampling(merged_train_df, "user", "item", num_negative=5)
+        merged_train_df = negative_sampling(merged_train_df, "user", "item", num_negative=5, na_list=merged_train_df.columns[3:])
         
     # 파생변수 추가: 아이템별 리뷰 수(num_reviews_item)
     merged_train_df = pivot_count(merged_train_df, pivot_col="item", col_name="num_reviews_item")
-    
+
     # (user, item, time)이 중복되는 경우 제거
     # 같은 유저가 같은 아이템을 재평가(2번 이상 평가)한 사실을 시간이 다른 것으로 확인할 수 있었다.
     merged_train_df = merged_train_df.drop_duplicates(["user", "item", "time"], ignore_index=True)
