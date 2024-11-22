@@ -3,9 +3,9 @@ import os
 import argparse
 from omegaconf import OmegaConf
 import pandas as pd
-import torch
 import numpy as np
-from torch.utils.data import Dataset, DataLoader, random_split
+import torch
+from torch.utils.data import Dataset, DataLoader
 import wandb
 import json
 from tqdm import tqdm
@@ -52,6 +52,7 @@ def main():
         entity="remember-us",
         config={
             "model": args.model_name,
+            "epochs": args.epochs,
             "test_user": os.path.basename(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         },
         # settings=wandb.Settings(code_dir="./src")  
@@ -128,6 +129,7 @@ def main():
         user_seq = []
         lines = df.groupby("user")["item"].apply(list)
         for line in lines:
+            items = line
             user_seq.append(items)
 
         row = []
@@ -142,7 +144,7 @@ def main():
         row = np.array(row)
         col = np.array(col)
         data = np.array(data)
-        rating_matrix = csr_matrix((data, (row, col)), shape=(train_df["user"].nunique(), train_df["item"].nunique()))
+        rating_matrix = csr_matrix((data, (row, col)), shape=(joined_rating_df["user"].nunique(), joined_rating_df["item"].nunique()))
         return rating_matrix
     
     valid_rating_matrix = df_to_matrix(valid_df)
@@ -183,7 +185,7 @@ def main():
     train_df = pd.read_csv("output/train_df.csv")
     valid_df = pd.read_csv("output/valid_df.csv")
     test_df = pd.read_csv("output/test_df.csv")
-    joined_rating_df = pd.read_csv("output/joined_rating_df.csv")
+    # joined_rating_df = pd.read_csv("output/joined_rating_df.csv")
 
     ################### dataloader
 
@@ -242,7 +244,7 @@ def main():
     # 4. Train
     print(f"--------------- {args.model_name} TRAINING ---------------")
     train_matrix = valid_rating_matrix
-    trainer = getattr(trainer_module, args.model_name)(model, train_loader, valid_loader, test_loader, None, train_matrix, args)
+    trainer = getattr(trainer_module, args.model_name)(model, train_loader, valid_loader, test_loader, None, train_matrix, df, args)
     
     checkpoint = args_str + ".pt"
     checkpoint_path = os.path.join(args.output_path, checkpoint)
@@ -259,6 +261,7 @@ def main():
     # 5. Test
     print(f"--------------- {args.model_name} TEST ---------------")
     trainer.train_matrix = test_rating_matrix
+    trainer.train_df = train_df
     trainer.model.load_state_dict(torch.load(checkpoint_path))
     _ = trainer.test(0)
 

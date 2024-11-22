@@ -17,6 +17,7 @@ class Trainer:
         test_dataloader,
         submission_dataloader,
         train_matrix,
+        df,
         args,
     ):
 
@@ -33,6 +34,7 @@ class Trainer:
         self.test_dataloader = test_dataloader
         self.submission_dataloader = submission_dataloader
         self.train_matrix = train_matrix
+        self.df = df
 
         self.optim = Adam(
             self.model.parameters(),
@@ -71,6 +73,7 @@ class DeepFM(Trainer):
         test_dataloader,
         submission_dataloader,
         train_matrix,
+        df,
         args,
     ):
         super(DeepFM, self).__init__(
@@ -80,6 +83,7 @@ class DeepFM(Trainer):
             test_dataloader,
             submission_dataloader,
             train_matrix,
+            df,
             args,
         )
 
@@ -89,60 +93,55 @@ class DeepFM(Trainer):
             dataloader,
             desc="Recommendation EP_%s:%d" % (mode, epoch),
             total=len(dataloader),
-            bar_format="{l_bar}{r_bar}",
+            bar_format="{l_bar}",
         )
 
         if mode == "train":
             self.model.train()
 
-            for x, y in rec_data_iter:
-                x, y = x.to(self.device), y.to(self.device)
+            num_batches = len(dataloader)
+            train_loss = 0
+            for i, batch in enumerate(rec_data_iter):
+                X, y = batch
+                X, y = X.to(self.device), y.to(self.device)
                 self.optim.zero_grad()
-                output = self.model(x)
+                output = self.model(X)
                 loss = nn.BCELoss()(output, y.float())
                 loss.backward()
-                self.optim.step()         
+                self.optim.step()
+
+                train_loss += loss.item()
+
+                if (i + 1) % 1000 == 0 or (i + 1) == num_batches:
+                    avg_loss = train_loss / (i + 1)
+
+            avg_loss = train_loss / num_batches
+            rec_data_iter.write(f"Final Average Loss: {avg_loss:.6f}")
+
+        elif mode == "valid":
+            self.model.eval()
+
+            correct_result_sum = 0
+            total_samples = 0
+            for i, batch in enumerate(rec_data_iter):
+                X, y = batch
+                X, y = X.to(self.device), y.to(self.device)
+                
+                output = self.model(X)
+                result = torch.round(output)
+                correct_result_sum += (result == y).sum().float()
+                total_samples += y.size(0)
+
+            acc = correct_result_sum / total_samples * 100
+            rec_data_iter.write("Final Acc : {:.2f}%".format(acc.item()))
+
+            return [acc.item()]
+
         else:
             self.model.eval()
-        
-            pred_list = None
-            answer_list = None
-            for i, batch in enumerate(rec_data_iter):
-                x, y = batch
-                x, y = x.to(self.device), y.to(self.device)
-                
-                # Predict scores for all items
-                rating_pred = self.model(x)  # DeepFM Forward
 
-                # Exclude already interacted items
-                rating_pred = rating_pred.cpu().data.numpy()
-                user_ids = x[:, 0].cpu().numpy()  # User IDs from batch
-                rating_pred[self.train_matrix[user_ids].toarray() > 0] = 0
+            test_df = self.df
 
-                # Get top 10 recommendations
-                ind = np.argpartition(rating_pred, -10)[:, -10:]  # Top-10 indices
-                arr_ind = rating_pred[np.arange(len(rating_pred))[:, None], ind]
-                arr_ind_argsort = np.argsort(arr_ind)[np.arange(len(rating_pred)), ::-1]
-                batch_pred_list = ind[
-                    np.arange(len(rating_pred))[:, None], arr_ind_argsort
-                ]
+            
 
-                # Append results
-                if i == 0:
-                    pred_list = batch_pred_list
-                    answer_list = y.cpu().numpy()
-                else:
-                    pred_list = np.append(pred_list, batch_pred_list, axis=0)
-                    answer_list = np.append(answer_list, y.cpu().numpy(), axis=0)
-
-            recall_5 = recall_at_k(answer_list, pred_list, topk=5)
-            recall_10 = recall_at_k(answer_list, pred_list, topk=10)
-
-            post_fix = {
-                "RECALL@5": "{:.4f}".format(recall_5),
-                "RECALL@10": "{:.4f}".format(recall_10),
-            }
-            print(post_fix)
-            wandb.log(post_fix)
-
-            return [recall_5, recall_10]
+            
