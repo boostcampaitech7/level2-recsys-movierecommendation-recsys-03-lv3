@@ -1,11 +1,11 @@
 import re
 import pandas as pd
 import numpy as np
-
-from scipy.sparse import csr_matrix
 from sklearn.preprocessing import MultiLabelBinarizer
 from tqdm import tqdm
 from typing import Tuple
+from scipy.sparse import csr_matrix
+
 
 # 피벗별로 상위 k개의 레벨만 남기기
 def filter_top_k_by_count(
@@ -15,8 +15,7 @@ def filter_top_k_by_count(
         top_k: int,
         ascending: bool = False
     ) -> pd.DataFrame:
-    """
-    아이템(유저)별 범주를 빈도 순으로 k개만 추출합니다.
+    """아이템(유저)별 범주를 빈도 순으로 k개만 추출합니다.
 
     Args:
         df (pd.DataFrame): 원본 데이터프레임
@@ -50,8 +49,7 @@ def label_encoding(
         label_col: str,
         pivot_col: str = None,
     ) -> pd.DataFrame:
-    """
-    데이터프레임에 라벨 인코딩을 적용합니다.
+    """데이터프레임에 라벨 인코딩을 적용합니다.
 
     Args:
         df (pd.DataFrame): 원본 데이터프레임
@@ -77,11 +75,10 @@ def label_encoding(
     return tmp_df
 
 # 함수 정의: 멀티-핫-인코딩 하기
-def multi_hot_encoding(
-        df: pd.DataFrame,
-        label_col: str,
-        pivot_col: str
-    ) -> pd.DataFrame:
+def multi_hot_encoding(df: pd.DataFrame,
+                       label_col: str,
+                       pivot_col: str
+                       ) -> pd.DataFrame:
     """
     범주형 데이터에서 여러 개의 선택 가능한 값을 이진 벡터(binary vector)로 변환합니다.
 
@@ -93,6 +90,7 @@ def multi_hot_encoding(
     Returns:
         pd.DataFrame: 멀티-핫-인코딩이 완료된 데이터프레임 반환.
     """
+
     # 1. pivot_col별 label_col을 리스트로 묶기
     grouped_df = df.groupby(pivot_col)[label_col].apply(lambda x: list(x)).reset_index()
 
@@ -109,12 +107,8 @@ def multi_hot_encoding(
     return result_df
 
 # 정규표현식을 활용한 title 텍스트 전처리 함수
-def preprocess_title(
-        df: pd.DataFrame, 
-        col: str = "title"
-    ) -> pd.DataFrame:
-    """
-    정규 표현식을 이용해 title 변수의 텍스트를 전처리합니다.
+def preprocess_title(df: pd.DataFrame, col: str = "title") -> pd.DataFrame:
+    """정규 표현식을 이용해 title 변수의 텍스트를 전처리합니다.
 
     Args:
         df (pd.DataFrame): 원본 데이터프레임
@@ -141,8 +135,8 @@ def preprocess_title(
     return df
 
 def fill_na(
-        df: pd.DataFrame, 
-        col: str
+        df: pd.DataFrame,
+        col: str,
     ) -> pd.DataFrame:
     match col:
         case "year":
@@ -153,8 +147,6 @@ def fill_na(
         case _:
             df[col] = df[col].fillna(-1)
             df[col] = df[col].apply(lambda x: x if type(x) == list else [x])
-            df[col] = df[col].fillna(-1)
-            df[col] = df[col].apply(lambda x: x if type(x) == list else [x])
     
     return df
 
@@ -162,10 +154,8 @@ def replace_duplication(
         train_ratings: pd.DataFrame,
         item_df: pd.DataFrame
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    중복되는 아이템이 아이템 번호가 같은 것을 제거하고, rating 데이터프레임에서는 하나의 아이템 번호로 통합합니다.
-    현재 우주전쟁(War of the Worlds, 2005) 영화가 2개의 item ID를 갖고 있습니다. 
-    따라서 같은 영화인데 다른 item 값을 갖는 데이터 중에서 결측치가 있는 item 제거합니다.
+    """중복되는 아이템이 아이템 번호가 같은 것을 제거하고, rating 데이터프레임에서는 하나의 아이템 번호로 통합합니다.
+    현재 우주전쟁(War of the Worlds, 2005) 영화가 2개의 item ID를 갖고 있습니다. 따라서 같은 영화인데 다른 item 값을 갖는 데이터 중에서 결측치가 있는 item 제거합니다.
 
     Args:
         train_ratings (pd.DataFrame): train_ratings 데이터프레임
@@ -176,6 +166,7 @@ def replace_duplication(
         - pd.DataFrame: 전처리가 완료된 train_ratings 데이터프레임
         - pd.DataFrame: 전처리가 완료된 item_df 데이터프레임 
     """
+
     item_df = item_df[item_df["item"] != 64997]
 
     # train_ratings에서 item 값을 변경하려는 인덱스 추출
@@ -187,10 +178,7 @@ def replace_duplication(
     return train_ratings, item_df
 
 # 계층 구조로 이루어진 데이터프레임을 배열 구조로 이루어진 데이터프레임으로 변경하는 함수
-def tree2array(
-        df: pd.DataFrame, 
-        is_array: bool
-    ) -> pd.DataFrame:
+def tree2array(df: pd.DataFrame, is_array: bool) -> pd.DataFrame:
     """계층적 구조로 이루어진 데이터프레임을 범주 리스트 형식으로 변환합니다.
 
     Args:
@@ -202,7 +190,6 @@ def tree2array(
     """
     rule = {
         "director": lambda x: list(x.unique()),
-        # "writer": lambda x: list(x.unique())
         # "writer": lambda x: list(x.unique())
     }
     if is_array:
@@ -253,15 +240,13 @@ def negative_sampling(
 
  
 # pivot_col 기준으로 카운팅하기
-def pivot_count(
-        df: pd.DataFrame,
-        pivot_col: str,
-        col_name: str,
-    ) -> pd.DataFrame:
+def pivot_count(df: pd.DataFrame,
+                pivot_col: str,
+                col_name: str,
+                ) -> pd.DataFrame:
     """
     주어진 데이터프레임에서 특정 열의 값에 대한 카운트를 계산하고, 그 결과를 새로운 열로 추가하여 최종 데이터프레임을 반환합니다.
 
-    
     Args:
         df (pd.DataFrame): 분석할 데이터프레임
         pivot_col (str): 데이터프레임에서 피벗할 변수명
@@ -271,7 +256,6 @@ def pivot_count(
         pd.DataFrame: 최종 데이터프레임을 반환
     """
 
-    if "review" in df.columns:
     if "review" in df.columns:
         positive_df =  df[df["review"]==1]
         pivot_count_df = positive_df[pivot_col].value_counts()
@@ -340,10 +324,7 @@ def replace_id(merged_df: pd.DataFrame) -> pd.DataFrame:
     return merged_df
 
 # sparse matrix 생성
-def df2mat(
-        df: pd.DataFrame, 
-        merged_df: pd.DataFrame
-    ) -> csr_matrix:
+def df2mat(df: pd.DataFrame, merged_df: pd.DataFrame) -> csr_matrix:
     """데이터프레임의 user-item matrix를 생성합니다.
 
     Args:
