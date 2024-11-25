@@ -64,9 +64,9 @@ def load_dataset(args: Namespace) -> pd.DataFrame:
     item_df = merge_dataset(titles, years, _genres, _directors, _writers)
 
     # 결측치 처리: side information 데이터를 병합하며서 생겨난 결측치 대체
-    item_df = fill_na(item_df, col="director") # [-1]로 결측치 대체
+    item_df = fill_na(args, item_df, col="director") # [-1]로 결측치 대체
     # item_df = fill_na(item_df, col="writer") # [-1]로 결측치 대체
-    item_df = fill_na(item_df, col="year") # title의 괄호 안 연도를 추출해 결측치 대체
+    item_df = fill_na(args, item_df, col="year") # title의 괄호 안 연도를 추출해 결측치 대체
 
     # 전처리: 정규표현식 활용한 title 텍스트 전처리
     item_df = preprocess_title(item_df)
@@ -90,7 +90,8 @@ def load_dataset(args: Namespace) -> pd.DataFrame:
 
     # (user, item, time)이 중복되는 경우 제거
     # 같은 유저가 같은 아이템을 재평가(2번 이상 평가)한 사실을 시간이 다른 것으로 확인할 수 있었다.
-    merged_train_df = merged_train_df.drop_duplicates(["user", "item", "time"], ignore_index=True)
+    if args.preprocessing.is_array:
+        merged_train_df = merged_train_df.drop_duplicates(["user", "item", "time"], ignore_index=True)
 
     return merged_train_df
 
