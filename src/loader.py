@@ -13,8 +13,7 @@ from src.preprocessing import (
     filter_top_k_by_count, 
     label_encoding, 
     multi_hot_encoding, 
-    preprocess_title, 
-    tree2array, 
+    preprocess_title,
     negative_sampling, 
     pivot_count, 
     merge_dataset, 
@@ -125,7 +124,7 @@ def data_loader(
     shuffle: bool = True
 ) -> DataLoader:
     """
-    데이터 로더를 생성하는 함수
+    최적화된 데이터 로더 생성 함수
 
     Args:
         cat_feautures (list): 범주형 변수 이름 리스트
