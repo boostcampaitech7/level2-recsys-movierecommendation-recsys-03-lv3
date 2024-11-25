@@ -6,16 +6,13 @@ import torch
 
 from argparse import Namespace
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
-from sklearn.feature_extraction.text import TfidfVectorizer
-from scipy.sparse import hstack
 
 from src.dataset import ContextDataset
 from src.preprocessing import (
     filter_top_k_by_count, 
     label_encoding, 
     multi_hot_encoding, 
-    preprocess_title, 
-    tree2array, 
+    preprocess_title,
     negative_sampling, 
     pivot_count, 
     merge_dataset, 
@@ -99,38 +96,53 @@ def load_dataset(args: Namespace) -> pd.DataFrame:
 
 
 def data_loader(
-    data: pd.DataFrame, 
+    data: pd.DataFrame,
+    cat_features: list[str],
     batch_size: int, 
     shuffle: bool = True
 ) -> DataLoader:
     """
-    데이터 로더를 생성하는 함수
+    최적화된 데이터 로더 생성 함수
 
     Args:
         data (pd.DataFrame): 학습, 검증, 테스트 데이터프레임
+        cat_feautures (list): 범주형 변수 이름 리스트.
         batch_size (int): 배치 크기
         shuffle (bool): 배치 셔플 유무. 디폴트는 True
 
     Returns:
         DataLoader: torch.utils의 DataLoader 객체
     """
-    user_col = torch.tensor(data.loc[:,"user"])
-    item_col = torch.tensor(data.loc[:,"item"])
-    genre_col = torch.tensor(data.loc[:,"genre"])
+    # "title" 열 제거 후 NumPy 배열로 변환 (전체 데이터 한 번에 처리)
+    data = data.drop("title", axis=1)
+    cat_data = data.loc[:, cat_features]
+    cat_data_np = cat_data.to_numpy()
 
-    users = list(set(data.loc[:,"user"]))
-    items =  list(set((data.loc[:, "item"])))
-    n_user = len(users)
-    n_item = len(items)
+    # 고유값 오프셋 계산
+    unique_counts = [0] + np.cumsum([len(np.unique(cat_data_np[:, i])) for i in range(cat_data_np.shape[1])]).tolist()
 
-    offsets = [0, n_user, n_user + n_item]
-    for col, offset in zip([user_col, item_col, genre_col], offsets):
-        col += offset
+    # 데이터 오프셋 추가 (벡터화 처리)
+    for i in range(cat_data_np.shape[1]):
+        cat_data_np[:, i] += unique_counts[i]
 
-    X = torch.cat([user_col.unsqueeze(1), item_col.unsqueeze(1), genre_col.unsqueeze(1)], dim=1)
-    y = torch.tensor(list(data.loc[:,"review"]))
+    # X와 y 텐서 변환
+    X = torch.cat([
+        torch.tensor(cat_data_np[:, :-1], dtype=torch.float32),
+        torch.tensor(data.drop(cat_features, axis=1).values, dtype=torch.float32)
+    ], axis=1)  # 마지막 열 제외
+    y = torch.tensor(cat_data_np[:, -1], dtype=torch.float32)  # 마지막 열
 
+    # 데이터셋 및 데이터로더 생성
     dataset = ContextDataset(X, y)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
 
     return dataloader
+
+
+    # y = list(data.loc[:,"review"])
+    # X = torch.tensor(data.drop(["title", "review"], axis=1).values)
+
+    # dataset = ContextDataset(X, y)
+    # dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+
+    # return dataloader
