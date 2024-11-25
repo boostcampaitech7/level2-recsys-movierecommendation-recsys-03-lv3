@@ -4,13 +4,12 @@ from torch.utils.data import Dataset
 
 
 class ContextDataset(Dataset):
-    def __init__(self, args, X: pd.DataFrame, y: pd.Series):
-        self.args = args
-        self.X = torch.LongTensor(X)
-        self.y = torch.LongTensor(y)
+    def __init__(self, X: torch.Tensor, y: torch.Tensor):
+        self.X = X
+        self.y = y
     
     def __len__(self):
-        return len(self.X).shape[0]
+        return len(self.X)
 
     def __getitem__(self, index: int):
         return self.X[index], self.y[index]
