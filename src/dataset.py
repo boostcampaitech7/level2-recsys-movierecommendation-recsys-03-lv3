@@ -12,4 +12,7 @@ class ContextDataset(Dataset):
         return len(self.X)
 
     def __getitem__(self, index: int):
-        return self.X[index], self.y[index]
+        if self.y is None:
+            return self.X[index]
+        else:
+            return self.X[index], self.y[index]
