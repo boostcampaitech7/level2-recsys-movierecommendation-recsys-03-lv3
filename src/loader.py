@@ -5,6 +5,7 @@ import pandas as pd
 import torch
 
 from argparse import Namespace
+from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 
 from src.dataset import ContextDataset
@@ -64,8 +65,8 @@ def load_dataset(args: Namespace) -> pd.DataFrame:
     item_df = merge_dataset(titles, years, _genres, _directors, _writers)
 
     # 결측치 처리: side information 데이터를 병합하며서 생겨난 결측치 대체
-    item_df = fill_na(args, item_df, col="director") # [-1]로 결측치 대체
-    # item_df = fill_na(item_df, col="writer") # [-1]로 결측치 대체
+    item_df = fill_na(args, item_df, col="director") # 계층 구조면 -1, 배열 구조면 [-1]로 결측치 대체
+    # item_df = fill_na(item_df, col="writer") # 계층 구조면 -1, 배열 구조면 [-1]로 결측치 대체
     item_df = fill_na(args, item_df, col="year") # title의 괄호 안 연도를 추출해 결측치 대체
 
     # 전처리: 정규표현식 활용한 title 텍스트 전처리
@@ -96,39 +97,69 @@ def load_dataset(args: Namespace) -> pd.DataFrame:
     return merged_train_df
 
 
+def data_split(args: Namespace, data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    if args.preprocessing.negative_sampling:
+        X_train, X_valid, y_train, y_valid = train_test_split(
+            data.drop(columns="review"),
+            data["review"],
+            test_size=0.2,
+            random_state=args.seed,
+            shuffle=True
+        )
+        return X_train, X_valid, y_train, y_valid    
+    else:
+        X_train, X_valid = train_test_split(
+            data,
+            test_size=0.2,
+            random_state=args.seed,
+            shuffle=True
+        )
+        return X_train, X_valid
+
+
 def data_loader(
-    data: pd.DataFrame, 
+    cat_features: list[str],
     batch_size: int, 
+    X_data: pd.DataFrame = None,
+    y_data: pd.DataFrame = None,
     shuffle: bool = True
 ) -> DataLoader:
     """
     데이터 로더를 생성하는 함수
 
     Args:
-        data (pd.DataFrame): 학습, 검증, 테스트 데이터프레임
-        batch_size (int): 배치 크기
-        shuffle (bool): 배치 셔플 유무. 디폴트는 True
+        cat_feautures (list): 범주형 변수 이름 리스트
+        batch_size (int): 배치의 크기
+        X_data (pd.DataFrame): X 데이터프레임. 디폴트는 None
+        y_data (pd.DataFrame): y 데이터프레임. 디폴트는 None
+        shuffle (bool): 데이터 셔플 유무. 디폴트는 True
 
     Returns:
         DataLoader: torch.utils의 DataLoader 객체
     """
-    user_col = torch.tensor(data.loc[:,"user"])
-    item_col = torch.tensor(data.loc[:,"item"])
-    genre_col = torch.tensor(data.loc[:,"genre"])
+    # "title" 열 제거 후 NumPy 배열로 변환 (전체 데이터 한 번에 처리)
+    X_data = X_data.drop("title", axis=1)
+    cat_data = X_data.loc[:, cat_features]
+    cat_data_np = cat_data.to_numpy()
 
-    users = list(set(data.loc[:,"user"]))
-    items =  list(set((data.loc[:, "item"])))
-    n_user = len(users)
-    n_item = len(items)
+    # 고유값 오프셋 계산
+    unique_counts = [0] + np.cumsum([len(np.unique(cat_data_np[:, i])) for i in range(cat_data_np.shape[1])]).tolist()
 
-    offsets = [0, n_user, n_user + n_item]
-    for col, offset in zip([user_col, item_col, genre_col], offsets):
-        col += offset
+    # 데이터 오프셋 추가 (벡터화 처리)
+    for i in range(cat_data_np.shape[1]):
+        cat_data_np[:, i] += unique_counts[i]
 
-    X = torch.cat([user_col.unsqueeze(1), item_col.unsqueeze(1), genre_col.unsqueeze(1)], dim=1)
-    y = torch.tensor(list(data.loc[:,"review"]))
+    # X와 y 텐서 변환
+    X = torch.cat([
+        torch.tensor(cat_data_np, dtype=torch.float32),
+        torch.tensor(X_data.drop(cat_features, axis=1).values, dtype=torch.float32)
+    ], axis=1)
+    if y_data is not None:
+        y = torch.tensor(y_data.values, dtype=torch.float32)
+    else:
+        y = None
 
     dataset = ContextDataset(X, y)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
-
+    
     return dataloader
