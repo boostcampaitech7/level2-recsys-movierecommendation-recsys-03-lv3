@@ -126,7 +126,7 @@ def data_loader(
         col += offset
 
     X = torch.cat([user_col.unsqueeze(1), item_col.unsqueeze(1), genre_col.unsqueeze(1)], dim=1)
-    y = torch.tensor(list(data.loc[:,"rating"]))
+    y = torch.tensor(list(data.loc[:,"review"]))
 
     dataset = ContextDataset(X, y)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
