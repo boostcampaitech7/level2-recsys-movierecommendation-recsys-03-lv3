@@ -337,7 +337,7 @@ def replace_id(merged_df: pd.DataFrame) -> pd.DataFrame:
 
     merged_df = merged_df.sort_values(by=["user"])
     merged_df.reset_index(drop=True, inplace=True)
-    return merged_df
+    return merged_df, users_dict, items_dict
 
 # sparse matrix 생성
 def df2mat(df: pd.DataFrame, merged_df: pd.DataFrame) -> csr_matrix:
