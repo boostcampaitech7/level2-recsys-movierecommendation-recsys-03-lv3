@@ -130,6 +130,7 @@ class DeepFM(Trainer):
 
             avg_loss = train_loss / num_batches
             rec_data_iter.write(f"Final Average Loss: {avg_loss:.6f}")
+            wandb.log({"loss": avg_loss})
 
         elif mode == "valid":
             self.model.eval()
@@ -180,6 +181,12 @@ class DeepFM(Trainer):
                 user_ratings = all_outputs[user_mask]
                 user_items = all_items[user_mask]
                 user_answers = all_answers[user_mask]
+
+                # 이미 본 아이템 마스킹
+                if user.item() in self.train_matrix:
+                    for idx, item in enumerate(user_items):
+                        if item.item() in self.train_matrix[user.item()]:
+                            user_ratings[idx] = -1
 
                 # Top-10 아이템 추출
                 _, top_k_indices = torch.topk(user_ratings, 10)

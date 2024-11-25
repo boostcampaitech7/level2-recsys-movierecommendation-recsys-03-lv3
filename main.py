@@ -81,7 +81,6 @@ def main():
 
     raw_genre_df = pd.read_csv(genre_data, sep="\t")
     raw_genre_df = raw_genre_df.drop_duplicates(subset=["item"]) #item별 하나의 장르만 남도록 drop
-    print(raw_genre_df)
 
     genre_dict = {genre:i for i, genre in enumerate(set(raw_genre_df["genre"]))}
     raw_genre_df["genre"]  = raw_genre_df["genre"].map(lambda x : genre_dict[x]) #genre id로 변경
@@ -94,15 +93,13 @@ def main():
     genres =  list(set((joined_rating_df.loc[:, "genre"])))
     genres.sort()
 
-    if len(users)-1 != max(users):
-        users_dict = {users[i]: i for i in range(len(users))}
-        joined_rating_df["user"]  = joined_rating_df["user"].map(lambda x : users_dict[x])
-        users = list(set(joined_rating_df.loc[:,"user"]))
+    users_dict = {users[i]: i for i in range(len(users))}
+    joined_rating_df["user"]  = joined_rating_df["user"].map(lambda x : users_dict[x])
+    users = list(set(joined_rating_df.loc[:,"user"]))
 
-    if len(items)-1 != max(items):
-        items_dict = {items[i]: i for i in range(len(items))}
-        joined_rating_df["item"]  = joined_rating_df["item"].map(lambda x : items_dict[x])
-        items =  list(set((joined_rating_df.loc[:, "item"])))
+    items_dict = {items[i]: i for i in range(len(items))}
+    joined_rating_df["item"]  = joined_rating_df["item"].map(lambda x : items_dict[x])
+    items =  list(set((joined_rating_df.loc[:, "item"])))
 
     joined_rating_df = joined_rating_df.sort_values(by=["user"])
     joined_rating_df.reset_index(drop=True, inplace=True)
@@ -146,7 +143,7 @@ def main():
         rating_matrix = csr_matrix((data, (row, col)), shape=(joined_rating_df["user"].nunique(), joined_rating_df["item"].nunique()))
         return rating_matrix
     
-    valid_rating_matrix = df_to_matrix(valid_df)
+    valid_rating_matrix = df_to_matrix(train_df)
     test_rating_matrix = df_to_matrix(test_df)
 
     # # 3. Negative instance 생성

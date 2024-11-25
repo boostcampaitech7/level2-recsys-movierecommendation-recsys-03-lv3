@@ -182,8 +182,7 @@ class EarlyStopping:
         self.score_min = score
 
 
-def generate_submission_file(data_file, preds):
-
+def generate_submission_file(data_file, preds, reversed_items_dict):
     rating_df = pd.read_csv(data_file)
     users = rating_df["user"].unique()
 
@@ -191,7 +190,8 @@ def generate_submission_file(data_file, preds):
 
     for index, items in enumerate(preds):
         for item in items:
-            result.append((users[index], item))
+            org_item = reversed_items_dict[item]
+            result.append((users[index], org_item))
 
     pd.DataFrame(result, columns=["user", "item"]).to_csv(
         "output/submission.csv", index=False
