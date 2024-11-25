@@ -6,6 +6,8 @@ import torch
 
 from argparse import Namespace
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
+from sklearn.feature_extraction.text import TfidfVectorizer
+from scipy.sparse import hstack
 
 from src.dataset import ContextDataset
 from src.preprocessing import (
@@ -64,9 +66,9 @@ def load_dataset(args: Namespace) -> pd.DataFrame:
     item_df = merge_dataset(titles, years, _genres, _directors, _writers)
 
     # 결측치 처리: side information 데이터를 병합하며서 생겨난 결측치 대체
-    item_df = fill_na(item_df, col="director") # [-1]로 결측치 대체
+    item_df = fill_na(args, item_df, col="director") # [-1]로 결측치 대체
     # item_df = fill_na(item_df, col="writer") # [-1]로 결측치 대체
-    item_df = fill_na(item_df, col="year") # title의 괄호 안 연도를 추출해 결측치 대체
+    item_df = fill_na(args, item_df, col="year") # title의 괄호 안 연도를 추출해 결측치 대체
 
     # 전처리: 정규표현식 활용한 title 텍스트 전처리
     item_df = preprocess_title(item_df)
@@ -90,7 +92,8 @@ def load_dataset(args: Namespace) -> pd.DataFrame:
 
     # (user, item, time)이 중복되는 경우 제거
     # 같은 유저가 같은 아이템을 재평가(2번 이상 평가)한 사실을 시간이 다른 것으로 확인할 수 있었다.
-    merged_train_df = merged_train_df.drop_duplicates(["user", "item", "time"], ignore_index=True)
+    if args.preprocessing.is_array:
+        merged_train_df = merged_train_df.drop_duplicates(["user", "item", "time"], ignore_index=True)
 
     return merged_train_df
 
@@ -125,7 +128,7 @@ def data_loader(
         col += offset
 
     X = torch.cat([user_col.unsqueeze(1), item_col.unsqueeze(1), genre_col.unsqueeze(1)], dim=1)
-    y = torch.tensor(list(data.loc[:,"rating"]))
+    y = torch.tensor(list(data.loc[:,"review"]))
 
     dataset = ContextDataset(X, y)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)

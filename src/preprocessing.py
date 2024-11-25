@@ -136,6 +136,7 @@ def preprocess_title(df: pd.DataFrame, col: str = "title") -> pd.DataFrame:
     return df
 
 def fill_na(
+        args,
         df: pd.DataFrame,
         col: str,
     ) -> pd.DataFrame:
@@ -147,7 +148,8 @@ def fill_na(
 
         case _:
             df[col] = df[col].fillna(-1)
-            df[col] = df[col].apply(lambda x: x if type(x) == list else [x])
+            if args.preprocessing.is_array:
+                df[col] = df[col].apply(lambda x: x if type(x) == list else [x])
     
     return df
 
@@ -205,10 +207,20 @@ def negative_sampling(
         user_col: str,
         item_col: str,
         num_negative: int,
-        na_list: list[str] = ["title", "year", "genre", "director"] ####### multi-hot일 경우 로직도 만들기! ########
+        na_list: list[str] = ["title", "year", "genre", "director"]
     ) -> pd.DataFrame:
     """
-    최적화된 부정 샘플링 함수.
+    주어진 데이터프레임의 각 사용자에 대해 negative sample을 생성하고, 긍정 샘플과 결합하여 최종 데이터프레임을 반환합니다.
+
+    Args:
+        df (pd.DataFrame): user_col과 item_col을 column으로 갖는 데이터프레임
+        user_col (str):  데이터프레임에서 사용자 ID를 나타내는 변수명
+        item_col (str): 데이터프레임에서 아이템 ID를 나타내는 변수명
+        num_negative (int): negative sample의 수
+        na_list (list[str]): negative sampling 이후 결측치를 처리할 column의 이름
+
+    Returns:
+        pd.DataFrame: 기존 데이터프레임에 negative sample까지 결합한 데이터프레임 반환
     """
 
     # 아이템 전체 집합 및 사용자별 아이템 목록 미리 생성
@@ -221,21 +233,24 @@ def negative_sampling(
     neg_samples = []
 
     for user, u_items in tqdm(user_items_dict.items()):
-        # 사용자가 이미 본 아이템 제외하고 부정 샘플 선택
+        # 사용자가 이미 본 아이템 제외하고 negative sample 선택
         negative_items = np.random.choice(list(items - u_items), num_negative, replace=False)
 
-        # 부정 샘플 데이터 생성
+        # negative sample 데이터 생성
         for item in negative_items:
             neg_sample = {user_col: user, item_col: item, "review": 0}
             for na_col in na_list:
                 neg_sample[na_col] = item_na_map[na_col].get(item, None)
             neg_samples.append(neg_sample)
 
-    # 부정 샘플과 기존 데이터 결합
+    # negative sample과 기존 데이터 결합
     neg_samples_df = pd.DataFrame(neg_samples)
     raw_rating_df = pd.concat([df, neg_samples_df], axis=0, ignore_index=True)
     raw_rating_df["review"] = raw_rating_df["review"].fillna(1)
-    raw_rating_df["review"].astype("int64")
+    raw_rating_df["review"] = raw_rating_df["review"].astype("int64")
+    raw_rating_df["time"] = raw_rating_df["time"].fillna(0)
+    # if raw_rating_df.isna().sum():
+    #     raise ValueError("처리되지 않은 결측치가 있습니다.")
 
     return raw_rating_df
 
