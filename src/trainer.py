@@ -1,12 +1,10 @@
 import torch
 import torch.nn as nn
 from torch.optim import Adam
-import numpy as np
 import tqdm
 import wandb
 
-from collections import defaultdict
-from .utils import recall_at_k
+from .utils import recall_at_k, precision_at_k, mapk, ndcg_k
 
 
 class Trainer:
@@ -54,6 +52,24 @@ class Trainer:
 
     def iteration(self, epoch, dataloader, mode="train"):
         raise NotImplementedError
+
+    def get_full_sort_score(self, epoch, actual, predicted):
+        recall_5 = recall_at_k(actual, predicted, topk=5)
+        recall_10 = recall_at_k(actual, predicted, topk=10)
+        precision_10 = precision_at_k(actual, predicted, topk=10)
+        map_10 = mapk(actual, predicted, k=10)
+        ndcg_10 = ndcg_k(actual, predicted, topk=10)
+
+        post_fix = {
+            "RECALL@5": "{:.4f}".format(recall_5),
+            "RECALL@10": "{:.4f}".format(recall_10),
+            "PRECISION@10": "{:.4f}".format(precision_10),
+            "MAP@10": "{:.4f}".format(map_10),
+            "NDCG@10": "{:.4f}".format(ndcg_10),
+        }
+        print("Epoch: ", epoch)
+        print(post_fix)
+        wandb.log(post_fix)
 
     def save(self, file_name):
         torch.save(self.model.cpu().state_dict(), file_name)
@@ -158,26 +174,23 @@ class DeepFM(Trainer):
 
             unique_users = all_users.unique()
             predicted, actual = [], []
-            K = 10
-            for user in unique_users:
+            for user in tqdm.tqdm(unique_users):
                 # 현재 사용자에 대한 평점과 아이템 ID 필터링
                 user_mask = (all_users == user)
                 user_ratings = all_outputs[user_mask]
                 user_items = all_items[user_mask]
                 user_answers = all_answers[user_mask]
 
-                # Top-K 아이템 추출
-                _, top_k_indices = torch.topk(user_ratings, K)
-                predicted.append(top_k_indices)
-                actual.append(answers)
+                # Top-10 아이템 추출
+                _, top_k_indices = torch.topk(user_ratings, 10)
+                predicted.append(user_items[top_k_indices].tolist())
+                actual_items = user_items[user_answers == 1]
+                actual.append(actual_items.tolist())
 
-                top_k_items = user_items[top_k_indices]
-                if user == 4058:
-                    print(f"User {user.item()}:")
-                    for item_id, answer in zip(user_items.numpy(), user_answers.numpy()):
-                        print(f"  Item {item_id}: Rating {answer:.4f}")
-                    for item_id in zip(top_k_items.numpy()):
-                        print(f"  Item {item_id}")
+            if mode == "submission":
+                return predicted
+            else:
+                self.get_full_sort_score(epoch, actual, predicted)
 
 
 

@@ -1,7 +1,9 @@
 import os
+import math
 import random
 
 import numpy as np
+import pandas as pd
 import torch
 
 
@@ -34,6 +36,98 @@ def recall_at_k(actual, predicted, topk):
             sum_recall += len(act_set & pred_set) / float(len(act_set))
             true_users += 1
     return sum_recall / true_users
+
+
+def precision_at_k(actual, predicted, topk):
+    sum_precision = 0.0
+    num_users = len(predicted)
+    for i in range(num_users):
+        act_set = set(actual[i])
+        pred_set = set(predicted[i][:topk])
+        sum_precision += len(act_set & pred_set) / float(topk)
+
+    return sum_precision / num_users
+
+
+def apk(actual, predicted, k=10):
+    """
+    Computes the average precision at k.
+    This function computes the average precision at k between two lists of
+    items.
+    Parameters
+    ----------
+    actual : list
+             A list of elements that are to be predicted (order doesn't matter)
+    predicted : list
+                A list of predicted elements (order does matter)
+    k : int, optional
+        The maximum number of predicted elements
+    Returns
+    -------
+    score : double
+            The average precision at k over the input lists
+    """
+    if len(predicted) > k:
+        predicted = predicted[:k]
+
+    score = 0.0
+    num_hits = 0.0
+
+    for i, p in enumerate(predicted):
+        if p in actual and p not in predicted[:i]:
+            num_hits += 1.0
+            score += num_hits / (i + 1.0)
+
+    if not actual:
+        return 0.0
+
+    return score / min(len(actual), k)
+
+
+def mapk(actual, predicted, k=10):
+    """
+    Computes the mean average precision at k.
+    This function computes the mean average prescision at k between two lists
+    of lists of items.
+    Parameters
+    ----------
+    actual : list
+             A list of lists of elements that are to be predicted
+             (order doesn't matter in the lists)
+    predicted : list
+                A list of lists of predicted elements
+                (order matters in the lists)
+    k : int, optional
+        The maximum number of predicted elements
+    Returns
+    -------
+    score : double
+            The mean average precision at k over the input lists
+    """
+    return np.mean([apk(a, p, k) for a, p in zip(actual, predicted)])
+
+
+def idcg_k(k):
+    res = sum([1.0 / math.log(i + 2, 2) for i in range(k)])
+    if not res:
+        return 1.0
+    else:
+        return res
+
+
+def ndcg_k(actual, predicted, topk):
+    res = 0
+    for user_id in range(len(actual)):
+        k = min(topk, len(actual[user_id]))
+        idcg = idcg_k(k)
+        dcg_k = sum(
+            [
+                int(predicted[user_id][j] in set(actual[user_id])) / math.log(j + 2, 2)
+                for j in range(topk)
+            ]
+        )
+        res += dcg_k / idcg
+    return res / float(len(actual))
 
 
 class EarlyStopping:
@@ -86,3 +180,19 @@ class EarlyStopping:
             print(f"Better performance. Saving model ...")
         torch.save(model.state_dict(), self.checkpoint_path)
         self.score_min = score
+
+
+def generate_submission_file(data_file, preds):
+
+    rating_df = pd.read_csv(data_file)
+    users = rating_df["user"].unique()
+
+    result = []
+
+    for index, items in enumerate(preds):
+        for item in items:
+            result.append((users[index], item))
+
+    pd.DataFrame(result, columns=["user", "item"]).to_csv(
+        "output/submission.csv", index=False
+    )

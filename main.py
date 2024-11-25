@@ -26,8 +26,6 @@ def main():
                         help="사용할 모델을 설정할 수 있습니다. (기본값 DeepFM)")
     parser.add_argument("--epochs", "--e", default=2, type=int,
                         help="모델 훈련을 반복할 epochs수를 지정할 수 있습니다. (기본값 2)")
-    parser.add_argument("--optuna", "--o", default=False, type=bool,
-                        help="Optuna 사용 여부를 설정할 수 있습니다. (기본값 False)")
     parser.add_argument("--run", "--r", type=str,
                         help="WandB run 이름을 설정할 수 있습니다.")
     parser.add_argument("--device", "--d", default="cuda", type=str,
@@ -45,6 +43,8 @@ def main():
 
     args = config_yaml
     args_str = f"{args.model_name}_{args.run}"
+    checkpoint = args_str + ".pt"
+    checkpoint_path = os.path.join(args.output_path, checkpoint)
 
     wandb.init(
         project=args.wandb_project,
@@ -54,8 +54,7 @@ def main():
             "model": args.model_name,
             "epochs": args.epochs,
             "test_user": os.path.basename(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        },
-        # settings=wandb.Settings(code_dir="./src")  
+        }, 
     )
 
     # Artifacts에 폴더 내 파일 모두 업로드
@@ -245,9 +244,7 @@ def main():
     print(f"--------------- {args.model_name} TRAINING ---------------")
     train_matrix = valid_rating_matrix
     trainer = getattr(trainer_module, args.model_name)(model, train_loader, valid_loader, test_loader, None, train_matrix, args)
-    
-    checkpoint = args_str + ".pt"
-    checkpoint_path = os.path.join(args.output_path, checkpoint)
+
     early_stopping = EarlyStopping(checkpoint_path, patience=10, verbose=True)
     for epoch in tqdm(range(args.epochs)):
         trainer.train(epoch)
@@ -261,7 +258,7 @@ def main():
     # 5. Test
     print(f"--------------- {args.model_name} TEST ---------------")
     trainer.train_matrix = test_rating_matrix
-    trainer.model.load_state_dict(torch.load(checkpoint_path))
+    trainer.load(checkpoint_path)
     _ = trainer.test(0)
 
     wandb.log({
