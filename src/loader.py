@@ -97,22 +97,44 @@ def load_dataset(args: Namespace) -> pd.DataFrame:
 
 
 def data_split(args: Namespace, data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    # 사용자별로 데이터를 그룹화
+    grouped = data.groupby("user")
+
+    train_list = []
+    valid_list = []
+
+    # 각 사용자 그룹에서 훈련과 검증 세트를 나누기
+    for _, group in grouped:
+        if args.preprocessing.negative_sampling:
+            X_train, X_valid, y_train, y_valid = train_test_split(
+                group.drop(columns="review"),
+                group["review"],
+                test_size=0.2,
+                random_state=args.seed,
+                shuffle=True
+            )
+            train_list.append(pd.concat([X_train, y_train], axis=1))
+            valid_list.append(pd.concat([X_valid, y_valid], axis=1))
+        else:
+            X_train, X_valid = train_test_split(
+                group,
+                test_size=0.2,
+                random_state=args.seed,
+                shuffle=True
+            )
+            train_list.append(X_train)
+            valid_list.append(X_valid)
+
+    # 리스트를 데이터프레임으로 결합
+    X_train = pd.concat(train_list, ignore_index=True)
+    X_valid = pd.concat(valid_list, ignore_index=True)
+
+    # y 값이 포함된 경우, y_train과 y_valid를 생성
     if args.preprocessing.negative_sampling:
-        X_train, X_valid, y_train, y_valid = train_test_split(
-            data.drop(columns="review"),
-            data["review"],
-            test_size=0.2,
-            random_state=args.seed,
-            shuffle=True
-        )
-        return X_train, X_valid, y_train, y_valid    
+        y_train = X_train.pop("review")
+        y_valid = X_valid.pop("review")
+        return X_train, X_valid, y_train, y_valid
     else:
-        X_train, X_valid = train_test_split(
-            data,
-            test_size=0.2,
-            random_state=args.seed,
-            shuffle=True
-        )
         return X_train, X_valid
 
 
