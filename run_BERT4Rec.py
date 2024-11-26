@@ -9,7 +9,7 @@ from omegaconf import OmegaConf
 
 import src.model as model_module
 import src.trainer as trainer_module
-from src.loader import load_dataset, data_split, sequential_split, data_loader
+from src.loader import load_dataset, data_split, data_loader
 from src.utils import set_seed, check_path, EarlyStopping
 from src.preprocessing import replace_id
 
@@ -68,60 +68,40 @@ def main():
     # merged_train_df.to_csv(merged_train_data, index=False)
     merged_train_df = pd.read_csv(merged_train_data)
 
-    # merged_train_df, users_dict, items_dict = replace_id(merged_train_df)
-    # items_dict = {k: v + len(users_dict) for k, v in items_dict.items()}
-    # merged_train_df.drop(columns=["title", "genre", "director", "time", "year", "num_reviews_item"], inplace=True)
+    merged_train_df, users_dict, items_dict = replace_id(merged_train_df)
+    items_dict = {k: v + len(users_dict) for k, v in items_dict.items()}
+    merged_train_df.drop(columns=["title", "genre", "director", "time", "year", "num_reviews_item"], inplace=True)
     wandb.log({"features": list(merged_train_df.columns)})
 
-    # X_train, X_valid, y_train, y_valid = data_split(args, merged_train_df)
+    X_train, X_valid, y_train, y_valid = data_split(args, merged_train_df)
 
-    # seen_indices = y_train[y_train == 1].index
-    # seen_data = X_train.loc[seen_indices]
-    # seen_items = seen_data.groupby("user")["item"].apply(list).to_dict()
+    seen_indices = y_train[y_train == 1].index
+    seen_data = X_train.loc[seen_indices]
+    seen_items = seen_data.groupby("user")["item"].apply(list).to_dict()
 
-    # train_loader = data_loader(args, ["user", "item"], 1024, X_train, y_train, True)
-    # valid_loader = data_loader(args, ["user", "item"], 512, X_valid, y_valid, True)
+    train_loader = data_loader(["user", "item"], 1024, X_train, y_train, True)
+    valid_loader = data_loader(["user", "item"], 512, X_valid, y_valid, True)
 
-    user_train, user_valid = None, None
-    if args.model_name == "BERT4Rec":
-        user_train, user_valid = sequential_split(merged_train_df)
-        train_loader = data_loader(args,
-            X_data=user_train,
-            num_user=args.model_args.BERT4Rec.num_user,
-            num_item=args.model_args.BERT4Rec.num_item,
-            max_len=args.model_args.BERT4Rec.max_len,
-            batch_size=args.batch_size,
-            mask_prob=0.15
-        )
-        valid_loader = data_loader(args,
-            X_data=user_valid,
-            num_user=args.model_args.BERT4Rec.num_user,
-            num_item=args.model_args.BERT4Rec.num_item,
-            max_len=args.model_args.BERT4Rec.max_len,
-            batch_size=args.batch_size,
-            mask_prob=0.0
-        )
-
-    print(f"--------------- INIT {args.model_name} ---------------")
-    # args.model_args[args.model_name].input_dims = [len(users_dict), len(items_dict)]
+    print("--------------- INIT {args.model_name} ---------------")
+    args.model_args[args.model_name].input_dims = [len(users_dict), len(items_dict)]
     model = getattr(model_module, args.model_name)(**args.model_args[args.model_name]).to(args.device)
 
-    print(f"--------------- {args.model_name} TRAINING ---------------")
+    print("--------------- {args.model_name} TRAINING ---------------")
 
-    trainer = getattr(trainer_module, args.model_name)(model, train_loader, valid_loader, None, args, user_train, user_valid)
+    trainer = getattr(trainer_module, args.model_name)(model, train_loader, valid_loader, None, seen_items, args)
 
-    # early_stopping = EarlyStopping(checkpoint_path, patience=10, verbose=True)
+    early_stopping = EarlyStopping(checkpoint_path, patience=10, verbose=True)
     for epoch in range(args.epochs):
         trainer.train(epoch)
-        # scores = trainer.valid(epoch)
+        scores = trainer.valid(epoch)
 
-        # early_stopping(np.array(scores[-1:]), trainer.model)
-        # if early_stopping.early_stop:
-        #     print("Early stopping")
-        #     break
+        early_stopping(np.array(scores[-1:]), trainer.model)
+        if early_stopping.early_stop:
+            print("Early stopping")
+            break
 
-    print(f"--------------- {args.model_name} TEST ---------------")
-    # trainer.load(checkpoint_path)
+    print("--------------- {args.model_name} TEST ---------------")
+    trainer.load(checkpoint_path)
     _ = trainer.test(0)
 
     wandb.log({

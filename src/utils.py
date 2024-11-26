@@ -195,3 +195,11 @@ def generate_submission_file(data_file, preds, reversed_items_dict):
     pd.DataFrame(result, columns=["user", "item"]).to_csv(
         "output/submission.csv", index=False
     )
+
+
+def random_neg(l, r, s):
+    # log에 존재하는 아이템과 겹치지 않도록 sampling
+    t = np.random.randint(l, r)
+    while t in s:
+        t = np.random.randint(l, r)
+    return t

@@ -1,5 +1,7 @@
 import os
 
+from collections import defaultdict
+
 import numpy as np
 import pandas as pd
 import torch
@@ -8,7 +10,7 @@ from argparse import Namespace
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 
-from src.dataset import ContextDataset
+from src.dataset import ContextDataset, SeqDataset
 from src.preprocessing import (
     filter_top_k_by_count, 
     label_encoding, 
@@ -136,14 +138,43 @@ def data_split(args: Namespace, data: pd.DataFrame) -> tuple[pd.DataFrame, pd.Da
         return X_train, X_valid, y_train, y_valid
     else:
         return X_train, X_valid
+    
+
+def sequential_split(df):
+    item_ids = df['item'].unique()
+    user_ids = df['user'].unique()
+
+    # user, item indexing
+    item2idx = pd.Series(data=np.arange(len(item_ids))+1, index=item_ids) # item re-indexing (1~num_item), num_item+1: mask idx
+    user2idx = pd.Series(data=np.arange(len(user_ids)), index=user_ids) # user re-indexing (0~num_user-1)
+
+    # dataframe indexing
+    df = pd.merge(df, pd.DataFrame({'item': item_ids, 'item_idx': item2idx[item_ids].values}), on='item', how='inner')
+    df = pd.merge(df, pd.DataFrame({'user': user_ids, 'user_idx': user2idx[user_ids].values}), on='user', how='inner')
+    df.sort_values(['user_idx', 'time'], inplace=True)
+    del df['item'], df['user']
+
+    # train set, valid set 생성
+    users = defaultdict(list) # defaultdict은 dictionary의 key가 없을때 default 값을 value로 반환
+    user_train = {}
+    user_valid = {}
+    for u, i, t in zip(df['user_idx'], df['item_idx'], df['time']):
+        users[u].append(i)
+
+    for user in users:
+        user_train[user] = users[user][:-1]
+        user_valid[user] = [users[user][-1]]
+    
+    return user_train, user_valid
 
 
 def data_loader(
-    cat_features: list[str],
-    batch_size: int, 
+    args,
+    cat_features: list[str] = None,
+    batch_size: int = None,
     X_data: pd.DataFrame = None,
     y_data: pd.DataFrame = None,
-    shuffle: bool = True
+    shuffle: bool = True, num_user=None, num_item=None, max_len=None, mask_prob=None
 ) -> DataLoader:
     """
     최적화된 데이터 로더 생성 함수
@@ -158,6 +189,11 @@ def data_loader(
     Returns:
         DataLoader: torch.utils의 DataLoader 객체
     """
+    if args.model_name == "BERT4Rec":
+        dataset = SeqDataset(X_data, num_user, num_item, max_len, mask_prob)
+        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+        return dataloader
+
     # NumPy 배열로 변환 (전체 데이터 한 번에 처리)
     cat_data = X_data.loc[:, cat_features]
     cat_data_np = cat_data.to_numpy()

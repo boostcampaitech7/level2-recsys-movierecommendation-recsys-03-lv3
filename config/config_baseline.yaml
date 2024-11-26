@@ -3,16 +3,28 @@ seed: 42                                        # 시드 고정
 wandb_project: "movie"                          # wandb 프로젝트 이름
 data_path: "~/movie/data/train/"
 output_path: "output/"
+batch_size: 120
+device: "cuda"
 
 preprocessing:
     ascending: False
     encoding: "label"
     is_array: True
     tree2array: False
-    negative_sampling: True
+    negative_sampling: False
 
 model_args:                                     # model 파라미터
     DeepFM:
         embedding_dim: 32
         mlp_dims: [30, 20, 10]
         drop_rate: 0.1
+    
+    BERT4Rec:
+        num_user: 31360
+        num_item: 6807
+        hidden_units: 50
+        num_heads: 1
+        num_layers: 2
+        max_len: 50
+        dropout_rate: 0.5
+        device: "cuda"
