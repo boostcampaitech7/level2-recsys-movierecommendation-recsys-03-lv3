@@ -9,14 +9,12 @@ from omegaconf import OmegaConf
 
 import src.model as model_module
 import src.trainer as trainer_module
-from src.loader import load_dataset, data_split, data_loader
 from src.utils import set_seed, check_path, EarlyStopping
+from src.loader import load_dataset, data_split, data_loader
 from src.preprocessing import replace_id
 
 
 def main():
-
-    # 1. Basic Environment Setup
 
     parser = argparse.ArgumentParser()
 
@@ -74,20 +72,19 @@ def main():
     wandb.log({"features": list(merged_train_df.columns)})
 
     X_train, X_valid, y_train, y_valid = data_split(args, merged_train_df)
-    print(X_valid[X_valid["user"] == 2753])
 
-    seen_indices = y_train[y_train == 1].index
-    seen_data = X_train.loc[seen_indices]
+    seen_data = X_train.loc[y_train[y_train == 1].index]
+    seen_data["item"] = seen_data["item"] + len(users_dict)
     seen_items = seen_data.groupby("user")["item"].apply(list).to_dict()
 
     train_loader = data_loader(["user", "item"], 1024, X_train, y_train, True)
-    valid_loader = data_loader(["user", "item"], 512, X_valid, y_valid, True)
+    valid_loader = data_loader(["user", "item"], 512, X_valid, y_valid, False)
 
-    print("--------------- INIT {args.model_name} ---------------")
+    print(f"--------------- INIT {args.model_name} ---------------")
     args.model_args[args.model_name].input_dims = [len(users_dict), len(items_dict)]
     model = getattr(model_module, args.model_name)(**args.model_args[args.model_name]).to(args.device)
 
-    print("--------------- {args.model_name} TRAINING ---------------")
+    print(f"--------------- {args.model_name} TRAINING ---------------")
 
     trainer = getattr(trainer_module, args.model_name)(model, train_loader, valid_loader, None, seen_items, args)
 
@@ -101,7 +98,7 @@ def main():
             print("Early stopping")
             break
 
-    print("--------------- {args.model_name} TEST ---------------")
+    print(f"--------------- {args.model_name} TEST ---------------")
     trainer.load(checkpoint_path)
     _ = trainer.test(0)
 
