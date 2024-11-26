@@ -13,9 +13,8 @@ class Trainer:
         model,
         train_dataloader,
         eval_dataloader,
-        test_dataloader,
         submission_dataloader,
-        train_matrix,
+        seen_items,
         args,
     ):
 
@@ -29,9 +28,8 @@ class Trainer:
 
         self.train_dataloader = train_dataloader
         self.eval_dataloader = eval_dataloader
-        self.test_dataloader = test_dataloader
         self.submission_dataloader = submission_dataloader
-        self.train_matrix = train_matrix
+        self.seen_items = seen_items
 
         self.optim = Adam(
             self.model.parameters(),
@@ -45,7 +43,7 @@ class Trainer:
         return self.iteration(epoch, self.eval_dataloader, mode="valid")
 
     def test(self, epoch):
-        return self.iteration(epoch, self.test_dataloader, mode="test")
+        return self.iteration(epoch, self.eval_dataloader, mode="test")
 
     def submission(self, epoch):
         return self.iteration(epoch, self.submission_dataloader, mode="submission")
@@ -85,18 +83,16 @@ class DeepFM(Trainer):
         model,
         train_dataloader,
         eval_dataloader,
-        test_dataloader,
         submission_dataloader,
-        train_matrix,
+        seen_items,
         args,
     ):
         super(DeepFM, self).__init__(
             model,
             train_dataloader,
             eval_dataloader,
-            test_dataloader,
             submission_dataloader,
-            train_matrix,
+            seen_items,
             args,
         )
 
@@ -183,9 +179,9 @@ class DeepFM(Trainer):
                 user_answers = all_answers[user_mask]
 
                 # 이미 본 아이템 마스킹
-                if user.item() in self.train_matrix:
+                if user.item() in self.seen_items:
                     for idx, item in enumerate(user_items):
-                        if item.item() in self.train_matrix[user.item()]:
+                        if item.item() in self.seen_items[user.item()]:
                             user_ratings[idx] = -1
 
                 # Top-10 아이템 추출

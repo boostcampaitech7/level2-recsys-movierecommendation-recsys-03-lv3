@@ -83,7 +83,7 @@ def load_dataset(args: Namespace) -> pd.DataFrame:
 
     # negative sampling
     if args.preprocessing.negative_sampling:
-        merged_train_df = negative_sampling(merged_train_df, "user", "item", num_negative=5, na_list=merged_train_df.columns[3:])
+        merged_train_df = negative_sampling(merged_train_df, "user", "item", num_negative=50, na_list=merged_train_df.columns[3:])
         
     # 파생변수 추가: 아이템별 리뷰 수(num_reviews_item)
     merged_train_df = pivot_count(merged_train_df, pivot_col="item", col_name="num_reviews_item")
@@ -136,8 +136,7 @@ def data_loader(
     Returns:
         DataLoader: torch.utils의 DataLoader 객체
     """
-    # "title" 열 제거 후 NumPy 배열로 변환 (전체 데이터 한 번에 처리)
-    X_data = X_data.drop("title", axis=1)
+    # NumPy 배열로 변환 (전체 데이터 한 번에 처리)
     cat_data = X_data.loc[:, cat_features]
     cat_data_np = cat_data.to_numpy()
 

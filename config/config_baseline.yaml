@@ -4,8 +4,15 @@ wandb_project: "movie"                          # wandb 프로젝트 이름
 data_path: "~/movie/data/train/"
 output_path: "output/"
 
+preprocessing:
+    ascending: False
+    encoding: "label"
+    is_array: True
+    tree2array: False
+    negative_sampling: True
+
 model_args:                                     # model 파라미터
     DeepFM:
         embedding_dim: 10
-        mlp_dims: [30, 20, 10]
+        mlp_dims: [30, 20]
         drop_rate: 0.1
