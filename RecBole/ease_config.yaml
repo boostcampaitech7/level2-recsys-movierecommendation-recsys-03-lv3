@@ -1,0 +1,26 @@
+# Dataset configuration
+data_path: ./dataset
+field_separator: "\t"
+USER_ID_FIELD: user_id
+ITEM_ID_FIELD: item_id
+TIME_FIELD: timestamp
+
+# Model configuration
+model: EASE
+reg_weight: 0.1  # Regularization weight
+
+# Training configuration
+epochs: 1  # EASE는 선형 모델로 한 번의 학습으로 충분
+train_batch_size: 1024
+
+# Evaluation configuration
+eval_args:
+  split: {'RS': [0.8, 0.1, 0.1]}
+  group_by: user
+  order: RO
+  mode: {'valid': 'full', 'test': 'full'}
+  save_result: True
+
+metrics: ['Recall', 'MRR', 'NDCG']
+topk: [10]
+valid_metric: Recall@10
