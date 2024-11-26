@@ -52,7 +52,7 @@ def main():
             "model": args.model_name,
             "epochs": args.epochs,
             "test_user": os.path.basename(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        }, 
+        },
     )
 
     # Artifacts에 폴더 내 파일 모두 업로드
@@ -61,8 +61,7 @@ def main():
     set_seed(args.seed)
     check_path(args.output_path)
 
-    
-    print(f"--------------- LOAD DATA ---------------")
+    print("--------------- LOAD DATA ---------------")
 
     # merged_train_df = load_dataset(args)
     merged_train_data = os.path.join(args.output_path, "merged_train_df.csv")
@@ -70,12 +69,13 @@ def main():
     merged_train_df = pd.read_csv(merged_train_data)
 
     merged_train_df, users_dict, items_dict = replace_id(merged_train_df)
-    items_dict = {v: k + len(users_dict) for k, v in users_dict.items()}
+    items_dict = {k: v + len(users_dict) for k, v in items_dict.items()}
     merged_train_df.drop(columns=["title", "genre", "director", "time", "year", "num_reviews_item"], inplace=True)
     wandb.log({"features": list(merged_train_df.columns)})
-    
+
     X_train, X_valid, y_train, y_valid = data_split(args, merged_train_df)
-    
+    print(X_valid[X_valid["user"] == 2753])
+
     seen_indices = y_train[y_train == 1].index
     seen_data = X_train.loc[seen_indices]
     seen_items = seen_data.groupby("user")["item"].apply(list).to_dict()
@@ -83,14 +83,12 @@ def main():
     train_loader = data_loader(["user", "item"], 1024, X_train, y_train, True)
     valid_loader = data_loader(["user", "item"], 512, X_valid, y_valid, True)
 
-
-    print(f"--------------- INIT {args.model_name} ---------------")
+    print("--------------- INIT {args.model_name} ---------------")
     args.model_args[args.model_name].input_dims = [len(users_dict), len(items_dict)]
     model = getattr(model_module, args.model_name)(**args.model_args[args.model_name]).to(args.device)
 
+    print("--------------- {args.model_name} TRAINING ---------------")
 
-    print(f"--------------- {args.model_name} TRAINING ---------------")
-    
     trainer = getattr(trainer_module, args.model_name)(model, train_loader, valid_loader, None, seen_items, args)
 
     early_stopping = EarlyStopping(checkpoint_path, patience=10, verbose=True)
@@ -103,8 +101,7 @@ def main():
             print("Early stopping")
             break
 
-
-    print(f"--------------- {args.model_name} TEST ---------------")
+    print("--------------- {args.model_name} TEST ---------------")
     trainer.load(checkpoint_path)
     _ = trainer.test(0)
 

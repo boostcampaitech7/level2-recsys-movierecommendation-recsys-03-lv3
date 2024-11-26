@@ -175,9 +175,8 @@ class EarlyStopping:
             self.counter = 0
 
     def save_checkpoint(self, score, model):
-        """Saves model when the performance is better."""
         if self.verbose:
-            print(f"Better performance. Saving model ...")
+            print("Better performance. Saving model ...")
         torch.save(model.state_dict(), self.checkpoint_path)
         self.score_min = score
 

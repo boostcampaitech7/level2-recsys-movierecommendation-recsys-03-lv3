@@ -102,7 +102,7 @@ class DeepFM(Trainer):
             dataloader,
             desc="Recommendation EP_%s:%d" % (mode, epoch),
             total=len(dataloader),
-            bar_format="{l_bar}",
+            bar_format="{l_bar}{r_bar}",
         )
 
         if mode == "train":
@@ -137,7 +137,7 @@ class DeepFM(Trainer):
                 for i, batch in enumerate(rec_data_iter):
                     X, y = batch
                     X, y = X.to(self.device), y.to(self.device)
-                    
+
                     output = self.model(X)
                     result = torch.round(output)
                     correct_result_sum += (result == y).sum().float()
@@ -150,7 +150,7 @@ class DeepFM(Trainer):
 
         else:
             self.model.eval()
-            
+
             outputs, users, items, answers = [], [], [], []
             with torch.no_grad():
                 for i, batch in enumerate(rec_data_iter):
@@ -162,7 +162,7 @@ class DeepFM(Trainer):
                     users.append(X[:, 0].cpu())
                     items.append(X[:, 1].cpu())
                     answers.append(y[:].cpu())
-            
+
             # 모든 batch의 출력을 하나의 tensor로 결합
             all_outputs = torch.cat(outputs, dim=0)
             all_users = torch.cat(users, dim=0)
@@ -194,7 +194,3 @@ class DeepFM(Trainer):
                 return predicted
             else:
                 self.get_full_sort_score(epoch, actual, predicted)
-
-
-
-            

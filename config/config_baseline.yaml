@@ -13,6 +13,6 @@ preprocessing:
 
 model_args:                                     # model 파라미터
     DeepFM:
-        embedding_dim: 10
-        mlp_dims: [30, 20]
+        embedding_dim: 32
+        mlp_dims: [30, 20, 10]
         drop_rate: 0.1
