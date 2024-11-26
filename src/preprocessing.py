@@ -6,7 +6,7 @@ from sklearn.preprocessing import MultiLabelBinarizer
 from tqdm import tqdm
 from scipy.sparse import csr_matrix
 from collections import Counter
-
+from scipy.sparse import csr_matrix
 
 # 피벗별로 상위 k개의 레벨만 남기기
 def filter_top_k_by_count(
@@ -522,3 +522,31 @@ def director_taste(
         empty_df = pd.concat([empty_df, small_empty_df],axis=0,sort=False)
     result_df = pd.merge(df, empty_df, on=user_col, how="left")
     return result_df
+
+# ease, multivae 관련 data 로드 및 전처리
+def load_data(data_path):
+    ratings = pd.read_csv(data_path)
+
+    # user와 item 고유 인덱스 매핑
+    unique_users = ratings['user'].unique()
+    unique_items = ratings['item'].unique()
+
+    user_to_idx = {user: idx for idx, user in enumerate(unique_users)}
+    item_to_idx = {item: idx for idx, item in enumerate(unique_items)}
+
+    # 인덱스 변환
+    ratings['user'] = ratings['user'].map(user_to_idx)
+    ratings['item'] = ratings['item'].map(item_to_idx)
+
+    num_users = len(user_to_idx)
+    num_items = len(item_to_idx)
+
+    # 희소 행렬 생성
+    rows, cols = ratings['user'].values, ratings['item'].values
+    data = np.ones(len(ratings))
+    interaction_matrix = csr_matrix((data, (rows, cols)), shape=(num_users, num_items))
+
+    idx_to_user = {idx: user for user, idx in user_to_idx.items()}
+    idx_to_item = {idx: item for item, idx in item_to_idx.items()}
+
+    return interaction_matrix, idx_to_user, idx_to_item, num_users, num_items
