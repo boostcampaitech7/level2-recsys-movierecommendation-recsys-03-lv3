@@ -1,0 +1,17 @@
+# config/config_baseline.yaml
+
+data_path: "/data/ephemeral/home/movie/data/train/train_ratings.csv"
+output_path: "output"
+ease:
+  reg_lambda: 500
+  output_file: "ease.csv"
+multivae:
+  epochs: 50
+  batch_size: 128
+  lr: 0.001
+  beta: 1.0
+  output_file: "multivae.csv"
+easer:
+  reg_lambda: 500
+  smoothing: 0.001
+  output_file: "easer.csv"
