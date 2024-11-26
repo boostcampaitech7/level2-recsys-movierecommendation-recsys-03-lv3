@@ -1,17 +1,18 @@
 # config/config_baseline.yaml
 
-data_path: "/data/ephemeral/home/movie/data/train/train_ratings.csv"
-output_path: "output"
-ease:
-  reg_lambda: 500
-  output_file: "ease.csv"
-multivae:
-  epochs: 50
-  batch_size: 128
-  lr: 0.001
-  beta: 1.0
-  output_file: "multivae.csv"
-easer:
-  reg_lambda: 500
-  smoothing: 0.001
-  output_file: "easer.csv"
+seed: 42                                        # 시드 고정
+device: "cuda"
+wandb_project: "movie"                          # wandb 프로젝트 이름
+data_path: "~/movie/data/train/train_ratings.csv"
+output_path: "output/"
+
+model_args:                                     # model 파라미터
+    EASE:
+      reg_lambda: 500
+      output_file: "ease.csv"
+    EASER:
+      reg_lambda: 500
+      smoothing: 0.001
+      output_file: "easer.csv"
+    MultiVAE:
+      output_file: "multivae.csv"
