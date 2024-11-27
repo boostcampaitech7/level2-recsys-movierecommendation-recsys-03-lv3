@@ -77,20 +77,23 @@ def main():
     print(f"--------------- {args.model_name} TRAINING ---------------")
     match args.model_name:
         case "EASE":
-            # EASE 모델 학습 및 추천
+            # EASE 모델 학습 및 평가
             model = train_ease(model, interaction_matrix)
-            ease_recommendations = recommend_ease(model, interaction_matrix, idx_to_item, N=10)
-            save_recommendations(ease_recommendations, idx_to_user, idx_to_item, args.model_name)
+            train_loss, n10, r10 = evaluate_ease(model, train_data, test_data, top_k=10)
+            print("=" * 77)
+            print(f"| End of training | train loss {train_loss:5.4f} | ndgc@10 {n10:5.4f} | recall@10 {r10:5.4f} |")
+            print("=" * 77)
         
         case "EASER":
-            # EASER 모델 학습 및 추천
-            easer_model = train_ease(model, interaction_matrix
-            )
-            easer_recommendations = recommend_ease(easer_model, interaction_matrix, idx_to_item, N=10)
-            save_recommendations(easer_recommendations, idx_to_user, idx_to_item, args.model_name)
+            # EASER 모델 학습 및 평가
+            model = train_ease(model, interaction_matrix)
+            train_loss, n10, r10 = evaluate_ease(model, train_data, test_data, top_k=10)
+            print("=" * 77)
+            print(f"| End of training | train loss {train_loss:5.4f} | ndgc@10 {n10:5.4f} | recall@10 {r10:5.4f} |")
+            print("=" * 77)
         
         case "MultiVAE":
-            # MultiVAE 모델 학습 및 추천
+            # MultiVAE 모델 학습 및 평가
             model = train_multivae(
                 model,
                 interaction_matrix,
@@ -114,8 +117,17 @@ def main():
             
 
     print(f"--------------- {args.model_name} TEST ---------------")
-    if args.model_name == "MultiVAE":
-            model = train_multivae(model, interaction_matrix, epochs=args.epochs, batch_size=512, lr=0.001, beta=1.0, device=args.device)
+    match args.model_name:
+        case "EASE":
+            ease_recommendations = recommend_ease(model, interaction_matrix, idx_to_item, N=10)
+            save_recommendations(ease_recommendations, idx_to_user, idx_to_item, filename=args.model_name, output_path=args.output_path)
+        
+        case "EASER":
+            easer_recommendations = recommend_ease(model, interaction_matrix, idx_to_item, N=10)
+            save_recommendations(easer_recommendations, idx_to_user, idx_to_item, filename=args.model_name, output_path=args.output_path)
+        
+        case "MultiVAE":
+            # model = train_multivae(model, interaction_matrix, epochs=args.epochs, batch_size=512, lr=0.001, beta=1.0, device=args.device)
             model.eval()
             with torch.no_grad():
                 interaction_tensor = torch.FloatTensor(interaction_matrix.toarray()).to(device)
