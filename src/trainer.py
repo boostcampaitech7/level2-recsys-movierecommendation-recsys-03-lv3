@@ -27,19 +27,43 @@ def train_ease(model: object, data: csr_matrix) -> object:
     return model
 
 
-def evaluate_ease(model: object, data: csr_matrix) -> np.ndarray:
+def evaluate_ease(
+        model: object, 
+        train_data: csr_matrix, 
+        test_data: csr_matrix, 
+        top_k: int =10
+    ) -> tuple[float, float]:
     """
-    학습된 EASE 계열 모델(EASE, EASER)을 이용해 예측값을 반환하는 함수
+    학습된 EASE 계열 모델(EASE, EASER)을 평가하는 함수
 
     Args:
         model (object): 학습된 EASE 계열 모델 객체
-        data (csr_matrix): 사용자-아이템 상호작용 희소 행렬
+        train_data (csr_matrix): 학습 데이터 (사용자-아이템 상호작용 희소 행렬)
+        test_data (csr_matrix): 테스트 데이터 (사용자-아이템 상호작용 희소 행렬)
+        top_k (int): 평가할 추천 항목 수
 
     Returns:
-        np.ndarray: 추천 점수 행렬
+        tuple: 평균 NDCG@K, Recall@K
     """
-    pred = model.predict(data)
-    return pred
+    # EASE 모델로 예측 점수 계산
+    predictions = model.predict(train_data)
+
+    # 학습 데이터에서 평가 항목 제외
+    predictions[train_data.nonzero()] = -np.inf
+
+    # 평가 지표 계산
+    n10 = ndcg_binary_at_k_batch(predictions, test_data, top_k)
+    r10 = recall_at_k_batch(predictions, test_data, top_k)
+
+    loss = model.loss_function_ease(train_data)
+    
+    post_fix = {
+        "Loss": f"{loss}",
+        "RECALL@10": f"{np.nanmean(r10):.4f}",
+        "NDCG@10": f"{np.nanmean(n10):.4f}"
+    }
+
+    return loss, np.nanmean(n10), np.nanmean(r10)
 
 
 def train_multivae(
@@ -69,6 +93,7 @@ def train_multivae(
 
         print(f"Epoch {epoch + 1}/{epochs}, Loss: {total_loss / train_data.shape[0]:.4f}")
         wandb.log({"loss": total_loss / train_data.shape[0]})
+
     return model
 
 
@@ -83,7 +108,7 @@ def evaluate_multivae(
     model.eval()
     
     # loss와 평가 지표를 담을 리스트 생성
-    total_valid_loss_list = []
+    total_loss_list = []
     n10_list = []
     r10_list = []
 
@@ -95,7 +120,7 @@ def evaluate_multivae(
 
             recon_batch, mean, logvar = model(batch)
             loss = model.loss_function(recon_batch, batch, mean, logvar, beta)
-            total_valid_loss_list.append(loss.item())
+            total_loss_list.append(loss.item())
 
             # 평가된 아이템 제외
             recon_batch = recon_batch.cpu().numpy()
@@ -113,9 +138,9 @@ def evaluate_multivae(
     r10_list = np.concatenate(r10_list)
 
     post_fix = {
-            "RECALL@10": "{:.4f}".format(np.nanmean(r10_list)),
-            "NDCG@10": "{:.4f}".format(np.nanmean(n10_list)),
+        "RECALL@10": "{:.4f}".format(np.nanmean(r10_list)),
+        "NDCG@10": "{:.4f}".format(np.nanmean(n10_list)),
     }
     wandb.log(post_fix)
 
-    return np.nanmean(total_valid_loss_list), np.nanmean(n10_list), np.nanmean(r10_list)
+    return np.nanmean(total_loss_list), np.nanmean(n10_list), np.nanmean(r10_list)
