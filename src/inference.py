@@ -1,6 +1,5 @@
 # src/inference.py
 
-from argparse import Namespace
 import pandas as pd
 import numpy as np
 import torch
@@ -52,7 +51,7 @@ def save_recommendations(
         idx_to_user: dict[int, int], 
         idx_to_item: dict[int, int], 
         filename: str,
-        args
+        output_path: str
     ) -> None:
     """
     추천 결과를 submission을 위한 양식에 맞게 바꾼 후, 파일로 저장하는 함수
@@ -62,6 +61,7 @@ def save_recommendations(
         idx_to_user (dict[int, int]): 인덱스를 유저 ID로 매핑시키기 위한 딕셔너리
         idx_to_item (dict[int, int]): 인덱스를 아이템 ID로 매핑시키기 위한 딕셔너리
         filename (str): 저장할 파일 이름
+        saved (str): 저장할 경로
     
     Return:
         None
@@ -75,5 +75,5 @@ def save_recommendations(
             item_ids.append(idx_to_item[item_idx])
 
     output_df = pd.DataFrame({'user': user_ids, 'item': item_ids})
-    output_df.to_csv(f"{args.output_path}{filename}.csv", index=False)
+    output_df.to_csv(f"{output_path}{filename}.csv", index=False)
     print(f"Recommendations saved to {filename}")
