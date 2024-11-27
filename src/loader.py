@@ -10,15 +10,14 @@ from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 
 from src.dataset import ContextDataset
 from src.preprocessing import (
-    filter_top_k_by_count, 
-    label_encoding, 
-    multi_hot_encoding, 
+    filter_top_k_by_count,
+    label_encoding,
+    multi_hot_encoding,
     preprocess_title,
-    negative_sampling, 
-    pivot_count, 
-    merge_dataset, 
-    fill_na, 
-    replace_duplication
+    negative_sampling,
+    pivot_count,
+    merge_dataset,
+    fill_na,
 )
 
 def load_dataset(args: Namespace) -> pd.DataFrame:
@@ -72,7 +71,7 @@ def load_dataset(args: Namespace) -> pd.DataFrame:
     item_df = preprocess_title(item_df)
 
     # 전처리: 같은 영화인데 다른 item ID 값을 갖는 데이터 전처리
-    train_ratings, item_df = replace_duplication(train_ratings, item_df)
+    # train_ratings, item_df = replace_duplication(train_ratings, item_df)
 
     # 계층 구조 데이터프레임을 배열 구조 데이터프레임으로 변환
     # if args.preprocessing.tree2array:
