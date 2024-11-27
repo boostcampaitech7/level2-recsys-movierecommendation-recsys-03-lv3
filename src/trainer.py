@@ -10,8 +10,8 @@ from src.model.multivae import MultiVAE
 from src.utils import ndcg_binary_at_k_batch, recall_at_k_batch
 
 
-def train_ease_model(model, interaction_matrix, reg_lambda=500):
-    model.train(interaction_matrix)
+def train_ease_model(model, train_data, reg_lambda=500):
+    model.train(train_data)
     return model
 
 
@@ -22,7 +22,7 @@ def train_multivae_model(
         batch_size, 
         lr, 
         beta,
-        device
+        device="cuda"
     ):
     model.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -51,7 +51,7 @@ def evaluate_multivae_model(
         valid_data, 
         batch_size, 
         beta=1.0,
-        device
+        device="cuda"
     ):
     model.eval()
     
@@ -62,22 +62,23 @@ def evaluate_multivae_model(
 
     with torch.no_grad():
         for start in range(0, train_data.shape[0], batch_size):
-            end = min(start + batch_size, train_data.shape[0], train_data.shape[0])    
+            end = min(start + batch_size, train_data.shape[0])    
             batch = torch.FloatTensor(train_data[start:end].toarray()).to(device)
-            heldout_batch = valid_data[start:end]
-        recon_batch, mean, logvar = model(batch)
-        loss = model.loss_function(recon_batch, batch, mean, logvar, beta)
+            heldout_batch = valid_data[start:end].toarray()
 
-        total_valid_loss_list.append(loss.item())
-        # 평가된 아이템 제외
-        recon_batch = recon_batch.cpu().numpy()
-        recon_batch[train_data.nonzero()] = -np.inf
+            recon_batch, mean, logvar = model(batch)
+            loss = model.loss_function(recon_batch, batch, mean, logvar, beta)
+            total_valid_loss_list.append(loss.item())
 
-        n10 = ndcg_binary_at_k_batch(recon_batch, heldout_batch, 10)
-        r10 = recall_at_k_batch(recon_batch, heldout_batch, 10)
+            # 평가된 아이템 제외
+            recon_batch = recon_batch.cpu().numpy()
+            recon_batch[train_data.toarray().nonzero()] = -np.inf
 
-        n10_list.append(n10)
-        r10_list.append(r10)
+            n10 = ndcg_binary_at_k_batch(recon_batch, heldout_batch, 10)
+            r10 = recall_at_k_batch(recon_batch, heldout_batch, 10)
+
+            n10_list.append(n10)
+            r10_list.append(r10)
 
     n10_list = np.concatenate(n10_list)
     r10_list = np.concatenate(r10_list)
@@ -85,13 +86,18 @@ def evaluate_multivae_model(
     return np.nanmean(total_valid_loss_list), np.nanmean(n10_list), np.nanmean(r10_list)
 
 
-def train_easer_model(model, interaction_matrix, reg_lambda=500, smoothing=0.01):
+def train_easer_model(model, train_data, reg_lambda=500, smoothing=0.01) -> object:
     """
-    EASER 모델 학습 함수
-    :param interaction_matrix: 사용자-아이템 상호작용 행렬
-    :param reg_lambda: Regularization 값
-    :param smoothing: Smoothing 값
-    :return: 학습된 EASER 모델
+    EASER 모델을 학습하는 함수
+
+    Args:
+        model (_type_): EASER 모델 객체
+        train_data (_type_): 학습 사용자-아이템 상호작용 행렬
+        reg_lambda (int, optional): Regularization 하이퍼파라미터
+        smoothing (float, optional): Smoothing 하이퍼파라미터
+
+    Returns:
+        object: 학습된 EASER 모델 객체
     """
-    model.train(interaction_matrix)
+    model.train(train_data)
     return model
