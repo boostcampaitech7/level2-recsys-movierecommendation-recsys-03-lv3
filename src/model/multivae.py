@@ -32,7 +32,7 @@ class MultiVAE(nn.Module):
         recon_x = self.decoder(z)
         return recon_x, mean, logvar
 
-    def loss_function(self, recon_x, x, mean, logvar, beta=1.0):
+    def loss_function_multivae(self, recon_x, x, mean, logvar, beta=1.0):
         BCE = -(x * F.log_softmax(recon_x, dim=1)).sum(dim=-1).mean()
         KLD = -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp(), dim=-1).mean()
         return BCE + beta * KLD
