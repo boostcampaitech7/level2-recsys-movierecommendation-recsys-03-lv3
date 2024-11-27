@@ -1,8 +1,9 @@
 import torch
 import torch.nn as nn
-from torch.optim import Adam
 import tqdm
 import wandb
+import numpy as np
+from torch.optim import Adam
 
 from .utils import recall_at_k, precision_at_k, mapk, ndcg_k
 
@@ -14,7 +15,7 @@ class Trainer:
         train_dataloader,
         eval_dataloader,
         submission_dataloader,
-        seen_items,
+        user_groups,
         args,
     ):
 
@@ -29,7 +30,7 @@ class Trainer:
         self.train_dataloader = train_dataloader
         self.eval_dataloader = eval_dataloader
         self.submission_dataloader = submission_dataloader
-        self.seen_items = seen_items
+        self.seen_items = user_groups
 
         self.optim = Adam(
             self.model.parameters(),
@@ -84,7 +85,7 @@ class DeepFM(Trainer):
         train_dataloader,
         eval_dataloader,
         submission_dataloader,
-        seen_items,
+        user_groups,
         args,
     ):
         super(DeepFM, self).__init__(
@@ -92,7 +93,7 @@ class DeepFM(Trainer):
             train_dataloader,
             eval_dataloader,
             submission_dataloader,
-            seen_items,
+            user_groups,
             args,
         )
 
@@ -151,46 +152,35 @@ class DeepFM(Trainer):
         else:
             self.model.eval()
 
-            outputs, users, items, answers = [], [], [], []
-            with torch.no_grad():
-                for i, batch in enumerate(rec_data_iter):
-                    X, y = batch
-                    X, y = X.to(self.device), y.to(self.device)
+            actual, predicted = [], []
+            for u, u_items, u_reviews, u_seen_items in tqdm.tqdm(self.user_groups):
+                u_items = np.array(u_items)
+                u_reviews = np.array(u_reviews)
 
-                    output = self.model(X)
-                    outputs.append(output.cpu())
-                    users.append(X[:, 0].cpu())
-                    items.append(X[:, 1].cpu())
-                    answers.append(y[:].cpu())
+                user_col = torch.full((len(u_items),), u, device=self.device)
+                item_col = torch.tensor(u_items, device=self.device)
 
-            # 모든 batch의 출력을 하나의 tensor로 결합
-            all_outputs = torch.cat(outputs, dim=0)
-            all_users = torch.cat(users, dim=0)
-            all_items = torch.cat(items, dim=0)
-            all_answers = torch.cat(answers, dim=0)
+                X = torch.cat([user_col.unsqueeze(1), item_col.unsqueeze(1)], dim=1)
+                y = torch.tensor(u_reviews)
 
-            unique_users = all_users.unique()
-            predicted, actual = [], []
-            for user in tqdm.tqdm(unique_users):
-                # 현재 사용자에 대한 평점과 아이템 ID 필터링
-                user_mask = (all_users == user)
-                user_ratings = all_outputs[user_mask]
-                user_items = all_items[user_mask]
-                user_answers = all_answers[user_mask]
+                output = self.model(X)
+                output = output.cpu().detach().numpy()
+                
+                if u == 1: print("u_items:", u_items)
+                if u == 1: print("u_seen_items:", u_seen_items)
+                if u == 1: print("mask 전 output:", output)
+                mask = np.isin(u_items, u_seen_items)
+                output[mask] = -1
+                if u == 1: print("mask 후 output:", output)
 
-                # 이미 본 아이템 마스킹
-                if user.item() in self.seen_items:
-                    for idx, item in enumerate(user_items):
-                        if item.item() in self.seen_items[user.item()]:
-                            user_ratings[idx] = -1
-
-                # Top-10 아이템 추출
-                _, top_k_indices = torch.topk(user_ratings, 10)
-                predicted.append(user_items[top_k_indices].tolist())
-                actual_items = user_items[user_answers == 1]
-                actual.append(actual_items.tolist())
+                top_k_idxs = np.argsort(output)[-10:][::-1]
+                predicted.append(u_items[top_k_idxs].tolist())
+                if u == 1: print(predicted)
 
             if mode == "submission":
                 return predicted
             else:
+                indices = np.where(u_reviews == 1)
+                actual_items = u_items[indices]
+                actual.append([item for item in actual_items if item not in u_seen_items])
                 self.get_full_sort_score(epoch, actual, predicted)

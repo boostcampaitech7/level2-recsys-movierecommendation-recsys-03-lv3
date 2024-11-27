@@ -49,24 +49,28 @@ def main():
     merged_train_df = pd.read_csv(merged_train_data)
 
     merged_train_df, users_dict, items_dict = replace_id(merged_train_df)
-    items_dict = {k: v + len(users_dict) for k, v in items_dict.items()}
     merged_train_df.drop(columns=["title", "genre", "director", "time", "year", "num_reviews_item"], inplace=True)
+
+    input_dims = merged_train_df.drop(columns=["review"]).nunique().tolist()
+    args.model_args[args.model_name].input_dims = input_dims
 
     X_train, y_train = merged_train_df.drop(columns=["review"]), merged_train_df["review"]
 
-    seen_data = X_train.loc[y_train[y_train == 1].index]
-    seen_data["item"] = seen_data["item"] + len(users_dict)
-    seen_items = seen_data.groupby("user")["item"].apply(list).to_dict()
+    per_users_df = merged_train_df.groupby("user", group_keys=False).apply(lambda x: list(zip(x["item"].values, x["review"].values)), include_groups=False)
+    user_groups = []
+    for user, item_review in per_users_df.items():
+        items, reviews = zip(*item_review)
+        user_seen_items = [item for item, review in zip(items, reviews) if review == 1]
+        user_groups.append((user, list(items), list(reviews), user_seen_items))
 
     submission_loader = data_loader(["user", "item"], 1024, X_train, y_train, False)
 
     print(f"--------------- INIT {args.model_name} ---------------")
-    args.model_args[args.model_name].input_dims = [len(users_dict), len(items_dict)]
     model = getattr(model_module, args.model_name)(**args.model_args[args.model_name]).to(args.device)
 
     print(f"--------------- PREDICT {args.model_name} ---------------")
 
-    trainer = getattr(trainer_module, args.model_name)(model, None, None, submission_loader, seen_items, args)
+    trainer = getattr(trainer_module, args.model_name)(model, None, None, submission_loader, user_groups, args)
 
     trainer.load(checkpoint_path)
     preds = trainer.submission(0)

@@ -66,27 +66,35 @@ def main():
     # merged_train_df.to_csv(merged_train_data, index=False)
     merged_train_df = pd.read_csv(merged_train_data)
 
-    merged_train_df, users_dict, items_dict = replace_id(merged_train_df)
-    items_dict = {k: v + len(users_dict) for k, v in items_dict.items()}
+    merged_train_df, _, _ = replace_id(merged_train_df)
     merged_train_df.drop(columns=["title", "genre", "director", "time", "year", "num_reviews_item"], inplace=True)
     wandb.log({"features": list(merged_train_df.columns)})
 
+    field_dims = merged_train_df.drop(columns=["review"]).nunique().tolist()
+    args.model_args[args.model_name].field_dims = field_dims
+
     X_train, X_valid, y_train, y_valid = data_split(args, merged_train_df)
 
-    seen_data = X_train.loc[y_train[y_train == 1].index]
-    seen_data["item"] = seen_data["item"] + len(users_dict)
-    seen_items = seen_data.groupby("user")["item"].apply(list).to_dict()
+    seen_items = X_train.loc[y_train[y_train == 1].index].groupby("user")["item"].apply(set).to_dict()
+    per_users_df = merged_train_df.groupby("user", group_keys=False).apply(lambda x: list(zip(x["item"].values, x["review"].values)), include_groups=False)
+    user_groups = []
+    for user, item_review in per_users_df.items():
+        items, reviews = zip(*item_review)
+        if user in seen_items:
+            user_seen_items = seen_items[user]
+        else:
+            user_seen_items = {}
+        user_groups.append((user, list(items), list(reviews), user_seen_items))
 
     train_loader = data_loader(["user", "item"], 1024, X_train, y_train, True)
     valid_loader = data_loader(["user", "item"], 512, X_valid, y_valid, False)
 
     print(f"--------------- INIT {args.model_name} ---------------")
-    args.model_args[args.model_name].input_dims = [len(users_dict), len(items_dict)]
     model = getattr(model_module, args.model_name)(**args.model_args[args.model_name]).to(args.device)
 
     print(f"--------------- {args.model_name} TRAINING ---------------")
 
-    trainer = getattr(trainer_module, args.model_name)(model, train_loader, valid_loader, None, seen_items, args)
+    trainer = getattr(trainer_module, args.model_name)(model, train_loader, valid_loader, None, user_groups, args)
 
     early_stopping = EarlyStopping(checkpoint_path, patience=10, verbose=True)
     for epoch in range(args.epochs):
