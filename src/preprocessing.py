@@ -283,36 +283,76 @@ def merge_dataset(
     return item_df
 
 
-def replace_id(merged_df: pd.DataFrame) -> tuple[pd.DataFrame, dict[int, int], dict[int, int]]:
+def id2idx(data: pd.DataFrame) -> tuple[pd.DataFrame, dict[int, int], dict[int, int], int, int]:
     """
     유저와 아이템 ID를 0부터 시작하는 nunique까지의 숫자로 매핑하는 함수
 
     Args:
-        merged_df (pd.DataFrame): 유저와 아이템 ID(user, item)를 column으로 갖는 데이터프레임
+        data (pd.DataFrame): 유저와 아이템 ID(user, item)를 column으로 갖는 데이터프레임
 
     Returns:
-        tuple[pd.DataFrame, dict[int, int], dict[int, int]]:
-        - pd.DataFrame: 유저와 아이템 ID가 변환된 데이터프레임
+        tuple[pd.DataFrame, dict[int, int], dict[int, int], int, int]:
+        - pd.DataFrame: 유저, 아이템 ID가 변환된 데이터프레임
         - dict[int, int]: 기존 유저 ID를 key로, 매핑하려는 값을 value로 갖는 딕셔너리
         - dict[int, int]: 기존 아이템 ID를 key로, 매핑하려는 값을 value로 갖는 딕셔너리
+        - int: 유저의 수
+        - int: 아이템의 개수
     """
-    # 유저, 아이템을 zero-based index로 매핑
-    users = merged_df["user"].unique()  # 유저 집합을 리스트로 생성
-    items = merged_df["item"].unique()  # 아이템 집합을 리스트로 생성
-    n_users = len(users)
-    n_items = len(items)
+    # 유저와 아이템의 unique 인덱스 저장
+    unique_users = data["user"].unique()
+    unique_items = data["item"].unique()
 
-    if (n_users - 1) != max(users):
-        users_dict = {users[i]: i for i in range(n_users)}
-        merged_df["user"] = merged_df["user"].map(lambda x: users_dict[x])
-        users = list(set(merged_df.loc[:, "user"]))
+    user_to_idx = {user: idx for idx, user in enumerate(unique_users)}
+    item_to_idx = {item: idx for idx, item in enumerate(unique_items)}
 
-    if (n_items - 1) != max(items):
-        items_dict = {items[i]: i for i in range(n_items)}
-        merged_df["item"] = merged_df["item"].map(lambda x: items_dict[x])
-        items = list(set((merged_df.loc[:, "item"])))
+    # 유저와 아이템 ID를 unique 인덱스로 변환
+    data["user"] = data["user"].map(user_to_idx)
+    data["item"] = data["item"].map(item_to_idx)
 
-    merged_df = merged_df.sort_values(by=["user"])
-    merged_df.reset_index(drop=True, inplace=True)
+    num_users = len(user_to_idx)
+    num_items = len(item_to_idx)
 
-    return merged_df, users_dict, items_dict
+    return data, user_to_idx, item_to_idx, num_users, num_items
+
+
+def idx2id(user_to_idx: dict[int, int], item_to_idx: dict[int, int]) -> tuple[dict[int, int], dict[int, int]]:
+    """
+    unique 인덱스를 유저, 아이템 ID로 다시 매핑하는 함수
+
+    Args:
+        user_to_idx (dict[int, int]): 기존 유저 ID를 key로, 매핑하려는 값을 value로 갖는 딕셔너리
+        item_to_idx (dict[int, int]): 기존 아이템 ID를 key로, 매핑하려는 값을 value로 갖는 딕셔너리
+
+    Returns:
+        tuple[dict[int, int], dict[int, int]]: 
+        - dict[int, int]: unique 인덱스를 key로, 기존 유저 ID를 value로 갖는 딕셔너리
+        - dict[int, int]: unique 인덱스를 key로, 기존 유저 ID를 value로 갖는 딕셔너리
+    """
+    idx_to_user = {idx: user for user, idx in user_to_idx.items()}
+    idx_to_item = {idx: item for item, idx in item_to_idx.items()}
+
+    return idx_to_user, idx_to_item
+
+
+def df2mat(
+        data: pd.DataFrame, 
+        num_users: int, 
+        num_items: int
+    ) -> csr_matrix:
+    """
+    주어진 데이터프레임으로부터 user-item interaction matrix를 만드는 메서드
+
+    Args:
+        data (pd.DataFrame): 유저(user)와 아이템(item)을 column으로 갖는 데이터프레임
+        num_users (int): 유저 수
+        num_items (int): 아이템 개수
+
+    Returns:
+        csr_matrix: user-item interaction matrix
+    """
+    rows = data["user"].values
+    cols = data["item"].values
+    data = np.ones(len(data))
+    interaction_matrix = csr_matrix((data, (rows, cols)), shape=(num_users, num_items))
+
+    return interaction_matrix
