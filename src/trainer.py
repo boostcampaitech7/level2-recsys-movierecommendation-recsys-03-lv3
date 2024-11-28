@@ -86,7 +86,7 @@ def train_multivae(
 
             optimizer.zero_grad()
             recon_batch, mean, logvar = model(batch)
-            loss = model.loss_function(recon_batch, batch, mean, logvar, beta)
+            loss = model.loss_function_multivae(recon_batch, batch, mean, logvar, beta)
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
@@ -119,7 +119,7 @@ def evaluate_multivae(
             heldout_batch = valid_data[start:end]
 
             recon_batch, mean, logvar = model(batch)
-            loss = model.loss_function(recon_batch, batch, mean, logvar, beta)
+            loss = model.loss_function_multivae(recon_batch, batch, mean, logvar, beta)
             total_loss_list.append(loss.item())
 
             # 평가된 아이템 제외
