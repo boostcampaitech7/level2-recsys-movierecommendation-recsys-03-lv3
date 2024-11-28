@@ -12,6 +12,13 @@ class DeepFM(nn.Module):
             mlp_dims: list[int],
             drop_rate: float = 0.1
         ) -> None:
+        """
+        Args:
+            input_dims (list[int]): 각 입력 차원의 크기 리스트 (예: 사용자 수, 영화 수, 장르 수)
+            embedding_dim (int): 임베딩 차원
+            mlp_dims (list[int]): MLP의 각 레이어 차원 리스트
+            drop_rate (float, optional): 드롭아웃 비율 (기본값 0.1)
+        """
         super(DeepFM, self).__init__()
         total_input_dim = int(sum(input_dims))  # n_user + n_movie + n_genre
 
@@ -35,6 +42,15 @@ class DeepFM(nn.Module):
         self.mlp_layers = nn.Sequential(*mlp_layers)
 
     def fm(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Factorization Machine(FM)을 통해 예측 값을 계산하는 메서드
+
+        Args:
+            x (torch.Tensor): 입력 텐서 (batch_size, total_num_input)
+
+        Returns:
+            torch.Tensor: FM의 출력 값
+        """
         # x : (batch_size, total_num_input)
         embed_x = self.embedding(x)
 
@@ -46,6 +62,15 @@ class DeepFM(nn.Module):
         return fm_y
 
     def mlp(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        MLP를 통해 예측 값을 계산하는 메서드
+
+        Args:
+            x (torch.Tensor): 입력 텐서 (batch_size, total_num_input)
+
+        Returns:
+            torch.Tensor: MLP의 출력 값
+        """
         embed_x = self.embedding(x)
 
         inputs = embed_x.view(-1, self.embedding_dim)
@@ -54,6 +79,15 @@ class DeepFM(nn.Module):
         return mlp_y
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        모델의 순전파 메서드
+
+        Args:
+            x (torch.Tensor): 입력 텐서 (batch_size, total_num_input)
+
+        Returns:
+            torch.Tensor: 최종 예측 값 (sigmoid 함수 적용)
+        """
         # fm component
         fm_y = self.fm(x).squeeze(1)
 
