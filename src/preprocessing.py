@@ -340,8 +340,8 @@ def replace_id(merged_df: pd.DataFrame) -> tuple[pd.DataFrame, dict[int, int], d
         - Dict[int, int]: 기존 아이템 ID를 key로, 매핑하려는 값을 value로 갖는 딕셔너리
     """
     # 유저, 아이템을 zero-based index로 매핑
-    users = list(set(merged_df.loc[:, "user"])).sort() # 유저 집합을 리스트로 생성
-    items = list(set(merged_df.loc[:, "item"])).sort() # 아이템 집합을 리스트로 생성
+    users = merged_df["user"].unique() # 유저 집합을 리스트로 생성
+    items = merged_df["item"].unique() # 아이템 집합을 리스트로 생성
     n_users = len(users)
     n_items = len(items)
 
