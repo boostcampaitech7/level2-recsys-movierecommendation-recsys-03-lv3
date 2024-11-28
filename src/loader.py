@@ -10,15 +10,14 @@ from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 
 from src.dataset import ContextDataset
 from src.preprocessing import (
-    filter_top_k_by_count, 
-    label_encoding, 
-    multi_hot_encoding, 
+    filter_top_k_by_count,
+    label_encoding,
+    multi_hot_encoding,
     preprocess_title,
-    negative_sampling, 
-    pivot_count, 
-    merge_dataset, 
-    fill_na, 
-    replace_duplication
+    negative_sampling,
+    pivot_count,
+    merge_dataset,
+    fill_na,
 )
 
 def load_dataset(args: Namespace) -> pd.DataFrame:
@@ -72,7 +71,7 @@ def load_dataset(args: Namespace) -> pd.DataFrame:
     item_df = preprocess_title(item_df)
 
     # 전처리: 같은 영화인데 다른 item ID 값을 갖는 데이터 전처리
-    train_ratings, item_df = replace_duplication(train_ratings, item_df)
+    # train_ratings, item_df = replace_duplication(train_ratings, item_df)
 
     # 계층 구조 데이터프레임을 배열 구조 데이터프레임으로 변환
     # if args.preprocessing.tree2array:
@@ -83,7 +82,7 @@ def load_dataset(args: Namespace) -> pd.DataFrame:
 
     # negative sampling
     if args.preprocessing.negative_sampling:
-        merged_train_df = negative_sampling(merged_train_df, "user", "item", num_negative=5, na_list=merged_train_df.columns[3:])
+        merged_train_df = negative_sampling(merged_train_df, "user", "item", num_negative=50, na_list=merged_train_df.columns[3:])
         
     # 파생변수 추가: 아이템별 리뷰 수(num_reviews_item)
     merged_train_df = pivot_count(merged_train_df, pivot_col="item", col_name="num_reviews_item")
@@ -97,22 +96,44 @@ def load_dataset(args: Namespace) -> pd.DataFrame:
 
 
 def data_split(args: Namespace, data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    # 사용자별로 데이터를 그룹화
+    grouped = data.groupby("user")
+
+    train_list = []
+    valid_list = []
+
+    # 각 사용자 그룹에서 훈련과 검증 세트를 나누기
+    for _, group in grouped:
+        if args.preprocessing.negative_sampling:
+            X_train, X_valid, y_train, y_valid = train_test_split(
+                group.drop(columns="review"),
+                group["review"],
+                test_size=0.2,
+                random_state=args.seed,
+                shuffle=True
+            )
+            train_list.append(pd.concat([X_train, y_train], axis=1))
+            valid_list.append(pd.concat([X_valid, y_valid], axis=1))
+        else:
+            X_train, X_valid = train_test_split(
+                group,
+                test_size=0.2,
+                random_state=args.seed,
+                shuffle=True
+            )
+            train_list.append(X_train)
+            valid_list.append(X_valid)
+
+    # 리스트를 데이터프레임으로 결합
+    X_train = pd.concat(train_list, ignore_index=True)
+    X_valid = pd.concat(valid_list, ignore_index=True)
+
+    # y 값이 포함된 경우, y_train과 y_valid를 생성
     if args.preprocessing.negative_sampling:
-        X_train, X_valid, y_train, y_valid = train_test_split(
-            data.drop(columns="review"),
-            data["review"],
-            test_size=0.2,
-            random_state=args.seed,
-            shuffle=True
-        )
-        return X_train, X_valid, y_train, y_valid    
+        y_train = X_train.pop("review")
+        y_valid = X_valid.pop("review")
+        return X_train, X_valid, y_train, y_valid
     else:
-        X_train, X_valid = train_test_split(
-            data,
-            test_size=0.2,
-            random_state=args.seed,
-            shuffle=True
-        )
         return X_train, X_valid
 
 
@@ -136,8 +157,7 @@ def data_loader(
     Returns:
         DataLoader: torch.utils의 DataLoader 객체
     """
-    # "title" 열 제거 후 NumPy 배열로 변환 (전체 데이터 한 번에 처리)
-    X_data = X_data.drop("title", axis=1)
+    # NumPy 배열로 변환 (전체 데이터 한 번에 처리)
     cat_data = X_data.loc[:, cat_features]
     cat_data_np = cat_data.to_numpy()
 
