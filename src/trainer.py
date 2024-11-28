@@ -1,7 +1,9 @@
 # src/trainer.py
 
 import os
+from argparse import Namespace
 from collections import defaultdict
+from typing import Union
 
 import numpy as np
 import torch
@@ -9,6 +11,8 @@ import torch.nn as nn
 import tqdm
 import wandb
 from torch.optim import Adam
+from torch.utils.data import DataLoader
+from scipy.sparse import csr_matrix
 
 from .utils import (
     recall_at_k,
@@ -23,13 +27,24 @@ from .utils import (
 class Trainer:
     def __init__(
         self,
-        model,
-        train_dataloader,
-        eval_dataloader,
-        submission_dataloader,
-        seen_items,
-        args,
+        model: nn.Module,
+        train_dataloader: Union[DataLoader, csr_matrix],
+        eval_dataloader: Union[DataLoader, csr_matrix],
+        submission_dataloader: Union[DataLoader, csr_matrix],
+        seen_items: Union[set, csr_matrix],
+        args: Namespace,
     ):
+        """
+        Trainer 클래스 초기화 메서드
+
+        Args:
+            model (nn.Module): 학습할 모델
+            train_dataloader (Union[DataLoader, csr_matrix]): train DataLoader 또는 train user-item interaction matrix
+            eval_dataloader (Union[DataLoader, csr_matrix]): valid DataLoader 또는 valid user-item interaction matrix
+            submission_dataloader (Union[DataLoader, csr_matrix]): submission DataLoader 또는 submission user-item interaction matrix
+            seen_items (Union[set, csr_matrix]): 이미 본 item set 또는 train user-item interaction matrix
+            args (Namespace): parser.parse_args()에서 반횐된 Namespace 객체
+        """
 
         self.args = args
         self.model = model
@@ -65,7 +80,21 @@ class Trainer:
     def iteration(self, epoch, dataloader, mode="train"):
         raise NotImplementedError
 
-    def get_full_sort_score(self, epoch, actual, predicted, verbose=True):
+    def get_full_sort_score(
+            self,
+            epoch: int,
+            actual: list[int],
+            predicted: list[int],
+        ) -> None:
+        """
+        여러 Ranking 평가지표를 한 번에 계산하는 메서드
+        (RECALL@5, RECALL@10, PRECISION@10, MAP@10, NDCG@10)
+
+        Args:
+            epoch (int): 현재 epoch
+            actual (list[int]): 실제 값(ground truth) 리스트
+            predicted (list[int]): 예측 값 리스트
+        """
         recall_5 = recall_at_k(actual, predicted, topk=5)
         recall_10 = recall_at_k(actual, predicted, topk=10)
         precision_10 = precision_at_k(actual, predicted, topk=10)
@@ -79,15 +108,19 @@ class Trainer:
             "MAP@10": "{:.4f}".format(map_10),
             "NDCG@10": "{:.4f}".format(ndcg_10),
         }
+        print(f"[{epoch} Epoch]")
+        print(post_fix)
+        wandb.log(post_fix)
 
-        if verbose:
-            print(f"[{epoch} Epoch]")
-            print(post_fix)
-            wandb.log(post_fix)
-        else:
-            return [recall_5, recall_10, precision_10, map_10, ndcg_10]
+    def save(self, file_name: str) -> None:
+        """
+        모델의 상태(가중치, 편향 등)를 파일에 저장하는 메서드
+        - EASE 또는 EASER 모델인 경우, 모델의 B 메트릭스를 .npy 파일로 저장
+        - 그 외의 경우, 모델의 state_dict를 .pt 파일로 저장
 
-    def save(self, file_name):
+        Args:
+            file_name (str): 저장할 파일의 경로 및 이름
+        """
         if self.args.model_name in ("EASE", "EASER"):
             directory, filename = os.path.split(file_name)
             name, _ = os.path.splitext(filename)
@@ -97,7 +130,15 @@ class Trainer:
             torch.save(self.model.cpu().state_dict(), file_name)
             self.model.to(self.device)
 
-    def load(self, file_name):
+    def load(self, file_name: str) -> None:
+        """
+        저장된 모델의 상태(가중치, 편향 등)를 파일에서 불러오는 메서드
+        - EASE 또는 EASER 모델인 경우, .npy 파일에서 B 메트릭스 로드
+        - 그 외의 경우, .pt 파일에서 모델의 state_dict를 로드
+
+        Args:
+            file_name (str): 로드할 파일의 경로 및 이름
+        """
         if self.args.model_name in ("EASE", "EASER"):
             directory, filename = os.path.split(file_name)
             name, _ = os.path.splitext(filename)
@@ -136,6 +177,14 @@ class DeepFM(Trainer):
         )
 
         if mode == "train":
+            """
+            train DataLoader를 사용하여 모델을 한 epoch 동안 학습
+
+            1. 모델을 학습 모드로 설정
+            2. 데이터 배치를 반복하여 손실을 계산
+            3. 역전파 수행하며, 모델의 매개변수 업데이트
+            4. 평균 손실 기록
+            """
             self.model.train()
 
             num_batches = len(dataloader)
@@ -148,7 +197,6 @@ class DeepFM(Trainer):
                 loss = nn.BCELoss()(output, y.float())
                 loss.backward()
                 self.optim.step()
-
                 train_loss += loss.item()
 
                 if (i + 1) % 1000 == 0 or (i + 1) == num_batches:
@@ -159,6 +207,16 @@ class DeepFM(Trainer):
             wandb.log({"loss": avg_loss})
 
         elif mode == "valid":
+            """
+            valid DataLoader를 사용하여 모델의 성능을 검증
+
+            1. 모델을 평가 모드로 설정
+            2. 데이터 배치를 반복하여 예측 결과를 계산
+            3. 예측 결과와 실제 레이블을 비교하여 Accuracy를 계산하고 기록
+
+            Returns:
+                list[float]: Accuracy(백분율)가 포함된 리스트
+            """
             self.model.eval()
 
             correct_result_sum = 0
@@ -179,6 +237,18 @@ class DeepFM(Trainer):
             return [acc.item()]
 
         else:
+            """
+            submission DataLoader를 사용하여 모델의 예측 결과를 생성하고, 사용자별로 추천할 아이템을 추출
+
+            1. 모델을 평가 모드로 설정
+            2. 데이터 배치를 반복하여 예측 결과를 계산
+            3. 각 사용자에 대해 Top-K 추천 아이템을 추출하고, 실제 아이템과 비교하여 결과 반환
+
+            Returns:
+                Union[list[int], None]:
+                - mode가 test인 경우, None을 반환하고 Ranking 점수 계산
+                - mode가 submission인 경우, 각 사용자에 대한 추천 아이템 리스트를 반환
+            """
             self.model.eval()
 
             outputs, users, items, answers = [], [], [], []
@@ -251,6 +321,11 @@ class EASE(Trainer):
     def iteration(self, _, data, mode="train"):
 
         if mode in ("train", "test"):
+            """
+            train user-item interaction matrix를 사용하여 모델을 학습
+            - mode가 train인 경우, train 데이터 학습
+            - mode가 test인 경우, 전체 데이터에 대해 재학습
+            """
             self.model.train(data)
 
             if mode == "test":
@@ -258,6 +333,16 @@ class EASE(Trainer):
                 print(f"Saved Model: {self.args.checkpoint_path}")
 
         elif mode == "valid":
+            """
+            train, valid user-item interaction matrix를 사용하여 모델의 성능을 검증
+
+            1. train 데이터에서 평가 항목을 제외
+            2. 모델을 사용하여 1번 데이터에 대한 예측 점수를 계산
+            3. 2번 데이터와 valid 데이터를 비교해 Ranking 평가지표를 계산하고 기록
+
+            Returns:
+                list[float]: RECALL@10이 포함된 리스트
+            """
             train_data = self.seen_items
             test_data = data
             top_k = 10
@@ -285,6 +370,12 @@ class EASE(Trainer):
             return [np.nanmean(r10)]
 
         else:
+            """
+            submission user-item interaction matrix를 사용하여 모델의 예측 결과를 생성하고, 사용자별로 추천할 아이템을 추출
+
+            Returns:
+                list[int]: 각 사용자에 대한 추천 아이템 리스트를 반환
+            """
             interaction_matrix = data
 
             predictions = self.model.predict(interaction_matrix)
@@ -299,6 +390,7 @@ class EASE(Trainer):
 
 
 class EASER(EASE):
+    """ EASE 모델을 상속받아 동일한 기능을 제공하는 클래스 """
     def __init__(
         self,
         model,
@@ -340,6 +432,17 @@ class MultiVAE(Trainer):
     def iteration(self, epoch, data, mode="train"):
 
         if mode in ("train", "test"):
+            """
+            train user-item interaction matrix를 사용하여 모델을 학습
+            - mode가 train인 경우, train 데이터 학습
+            - mode가 test인 경우, 전체 데이터에 대해 재학습
+
+            1. 모델을 학습 모드로 설정
+            2. 데이터 배치를 반복하여 손실을 계산
+            3. 역전파 수행하며, 모델의 매개변수 업데이트
+            4. mode가 train인 경우, 평균 손실 기록
+               mode가 test인 경우, 모델 상태 저장
+            """
             self.model.train()
             train_data = data
 
@@ -350,7 +453,7 @@ class MultiVAE(Trainer):
 
                 self.optim.zero_grad()
                 recon_batch, mean, logvar = self.model(batch)
-                loss = self.model.loss_function_multivae(recon_batch, batch, mean, logvar, self.args.kl_beta)
+                loss = self.model.loss_function_multivae(batch, recon_batch, mean, logvar, self.args.kl_beta)
                 loss.backward()
                 self.optim.step()
                 total_loss += loss.item()
@@ -364,6 +467,17 @@ class MultiVAE(Trainer):
                 print(f"Saved Model: {self.args.checkpoint_path}")
 
         elif mode == "valid":
+            """
+            train, valid user-item interaction matrix를 사용하여 모델을 학습
+
+            1. 모델을 평가 모드로 설정
+            2. train 데이터에서 평가 항목을 제외
+            2. 모델을 사용하여 2번 데이터에 대한 예측 점수를 계산
+            3. 3번 데이터와 valid 데이터를 비교해 Ranking 평가지표를 계산하고 기록
+
+            Returns:
+                list[float]: RECALL@10이 포함된 리스트
+            """
             self.model.eval()
             train_data = self.seen_items
             valid_data = data
@@ -407,6 +521,12 @@ class MultiVAE(Trainer):
             return [np.nanmean(r10_list)]
 
         else:
+            """
+            submission user-item interaction matrix를 사용하여 모델의 예측 결과를 생성하고, 사용자별로 추천할 아이템을 추출
+
+            Returns:
+                list[int]: 각 사용자에 대한 추천 아이템 리스트를 반환
+            """
             self.model.eval()
             interaction_matrix = data
 

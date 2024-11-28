@@ -8,9 +8,17 @@ import bottleneck as bn
 import numpy as np
 import pandas as pd
 import torch
+from scipy.sparse import csr_matrix
 
 
 def set_seed(seed):
+    """
+    재현성을 위한 랜덤 시드를 설정하는 메서드
+    다양한 라이브러리의 랜덤 시드를 설정 (Python의 random 모듈, Numpy, PyTorch(CPU 및 GPU))
+
+    Args:
+        seed (int): 랜덤 숫자 생성을 위한 시드 값
+    """
     random.seed(seed)
     os.environ["PYTHONHASHSEED"] = str(seed)
     np.random.seed(seed)
@@ -21,25 +29,63 @@ def set_seed(seed):
 
 
 def check_path(path: str) -> None:
+    """
+    디렉토리가 존재하는지 확인하고, 존재하지 않으면 생성하는 메서드
+
+    Args:
+        path (str): 확인하고 생성할 경로
+    """
     if not os.path.exists(path):
         os.makedirs(path)
         print(f"{path} created")
 
 
-def recall_at_k(actual, predicted, topk):
+def recall_at_k(
+        actual: list[int],
+        predicted: list[int],
+        topk: int
+    ) -> float:
+    """
+    RECALL@K를 계산하는 메서드
+
+    Args:
+        actual (list[int]): 실제 값(ground truth) 리스트
+        predicted (list[int]): 예측 값 리스트
+        topk (int): 상위 K개 예측 항목의 수
+
+    Returns:
+        float: RECALL@K 값
+    """
     sum_recall = 0.0
     num_users = len(predicted)
     true_users = 0
     for i in range(num_users):
         act_set = set(actual[i])
         pred_set = set(predicted[i][:topk])
+
         if len(act_set) != 0:
             sum_recall += len(act_set & pred_set) / float(len(act_set))
             true_users += 1
+
     return sum_recall / true_users
 
 
-def precision_at_k(actual, predicted, topk):
+def precision_at_k(
+        actual: list[int],
+        predicted: list[int],
+        topk: int
+    ) -> float:
+    """
+    PRECISION@K를 계산하는 메서드
+
+    Args:
+        actual (list[int]): 실제 값(ground truth) 리스트
+        predicted (list[int]): 예측 값 리스트
+        topk (int): 상위 K개 예측 항목의 수
+
+    Returns:
+        float: PRECISION@K 값
+    """
     sum_precision = 0.0
     num_users = len(predicted)
     for i in range(num_users):
@@ -50,26 +96,24 @@ def precision_at_k(actual, predicted, topk):
     return sum_precision / num_users
 
 
-def apk(actual, predicted, k=10):
+def apk(
+        actual: list[int],
+        predicted: list[int],
+        topk: int
+    ) -> float:
     """
-    Computes the average precision at k.
-    This function computes the average precision at k between two lists of
-    items.
-    Parameters
-    ----------
-    actual : list
-             A list of elements that are to be predicted (order doesn't matter)
-    predicted : list
-                A list of predicted elements (order does matter)
-    k : int, optional
-        The maximum number of predicted elements
-    Returns
-    -------
-    score : double
-            The average precision at k over the input lists
+    AP@K를 계산하는 메서드
+
+    Args:
+        actual (list[int]): 실제 값(ground truth) 리스트
+        predicted (list[int]): 예측 값 리스트
+        topk (int): 상위 K개 예측 항목의 수
+
+    Returns:
+        float: AP@K 값
     """
-    if len(predicted) > k:
-        predicted = predicted[:k]
+    if len(predicted) > topk:
+        predicted = predicted[:topk]
 
     score = 0.0
     num_hits = 0.0
@@ -82,33 +126,38 @@ def apk(actual, predicted, k=10):
     if not actual:
         return 0.0
 
-    return score / min(len(actual), k)
+    return score / min(len(actual), topk)
 
 
-def mapk(actual, predicted, k=10):
+def mapk(
+        actual: list[int],
+        predicted: list[int],
+        topk: int
+    ) -> float:
     """
-    Computes the mean average precision at k.
-    This function computes the mean average prescision at k between two lists
-    of lists of items.
-    Parameters
-    ----------
-    actual : list
-             A list of lists of elements that are to be predicted
-             (order doesn't matter in the lists)
-    predicted : list
-                A list of lists of predicted elements
-                (order matters in the lists)
-    k : int, optional
-        The maximum number of predicted elements
-    Returns
-    -------
-    score : double
-            The mean average precision at k over the input lists
+    MAP를 계산하는 메서드
+
+    Args:
+        actual (list[int]): 실제 값(ground truth) 리스트
+        predicted (list[int]): 예측 값 리스트
+        topk (int): 상위 K개 예측 항목의 수
+
+    Returns:
+        float: MAP 값
     """
-    return np.mean([apk(a, p, k) for a, p in zip(actual, predicted)])
+    return np.mean([apk(a, p, topk) for a, p in zip(actual, predicted)])
 
 
-def idcg_k(k):
+def idcg_k(k: int) -> float:
+    """
+    IDCG@K를 계산하는 메서드
+
+    Args:
+        k (int): 상위 K개 예측 항목의 수
+
+    Returns:
+        float: IDCG@K 값
+    """
     res = sum([1.0 / math.log(i + 2, 2) for i in range(k)])
     if not res:
         return 1.0
@@ -116,7 +165,22 @@ def idcg_k(k):
         return res
 
 
-def ndcg_k(actual, predicted, topk):
+def ndcg_k(
+        actual: list[int],
+        predicted: list[int],
+        topk: int
+    ) -> float:
+    """
+    NDCG@K를 계산하는 메서드
+
+    Args:
+        actual (list[int]): 실제 값(ground truth) 리스트
+        predicted (list[int]): 예측 값 리스트
+        k (int): 상위 K개 예측 항목의 수
+
+    Returns:
+        float: NDCG@K 값
+    """
     res = 0
     for user_id in range(len(actual)):
         k = min(topk, len(actual[user_id]))
@@ -128,10 +192,26 @@ def ndcg_k(actual, predicted, topk):
             ]
         )
         res += dcg_k / idcg
+
     return res / float(len(actual))
 
 
-def ndcg_binary_at_k_batch(X_pred, heldout_batch, k):
+def ndcg_binary_at_k_batch(
+        X_pred: np.ndarray,
+        heldout_batch: csr_matrix,
+        k: int
+    ) -> np.ndarray:
+    """
+    배치에서 NDCG@K를 계산하는 메서드
+
+    Args:
+        X_pred (np.ndarray): 예측 값 행렬
+        heldout_batch (csr_matrix): 실제 값(ground truth) user-item interaction matrix
+        k (int): 상위 K개 예측 항목의 수
+
+    Returns:
+        np.ndarray: 각 사용자에 대한 NDCG 값의 배열
+    """
     batch_users = X_pred.shape[0]
     idx_topk_part = bn.argpartition(-X_pred, k, axis=1)
     topk_part = X_pred[np.arange(batch_users)[:, np.newaxis],
@@ -146,10 +226,26 @@ def ndcg_binary_at_k_batch(X_pred, heldout_batch, k):
                         idx_topk].toarray() * tp).sum(axis=1)
     IDCG = np.array([(tp[:min(n, k)]).sum()
                     for n in heldout_batch.getnnz(axis=1)])
+
     return DCG / IDCG
 
 
-def recall_at_k_batch(X_pred, heldout_batch, k):
+def recall_at_k_batch(
+        X_pred: np.ndarray,
+        heldout_batch: csr_matrix,
+        k: int
+    ) -> np.ndarray:
+    """
+    배치에서 RECALL@K를 계산하는 메서드
+
+    Args:
+        X_pred (np.ndarray): 예측 값 행렬
+        heldout_batch (csr_matrix): 실제 값(ground truth) user-item interaction matrix
+        k (int): 상위 K개 예측 항목의 수
+
+    Returns:
+        np.ndarray: 각 사용자에 대한 RECALL 값의 배열
+    """
     batch_users = X_pred.shape[0]
 
     idx = bn.argpartition(-X_pred, k, axis=1)
@@ -160,21 +256,26 @@ def recall_at_k_batch(X_pred, heldout_batch, k):
     tmp = (np.logical_and(X_true_binary, X_pred_binary).sum(axis=1)).astype(
         np.float32)
     recall = tmp / np.minimum(k, X_true_binary.sum(axis=1))
+
     return recall
 
 
 class EarlyStopping:
-    """Early stops the training if validation loss doesn't improve after a given patience."""
+    """계산된 valid 평가지표가 patience 이후 개선되지 않는 경우 훈련 조기 중단"""
 
-    def __init__(self, checkpoint_path, patience=10, verbose=False, delta=0):
+    def __init__(
+            self,
+            checkpoint_path: str,
+            patience: int = 10,
+            verbose: bool = False,
+            delta: float = 0
+        ):
         """
         Args:
-            patience (int): How long to wait after last time validation loss improved.
-                            Default: 10
-            verbose (bool): If True, prints a message for each validation loss improvement.
-                            Default: False
-            delta (float): Minimum change in the monitored quantity to qualify as an improvement.
-                            Default: 0
+            checkpoint_path (str): 모델 체크포인트를 저장할 경로
+            patience (int): 마지막으로 검증 손실이 개선된 이후 기다릴 시간 (기본값: 10)
+            verbose (bool): True일 경우, 각 검증 손실 개선에 대한 메시지를 출력 (기본값: False)
+            delta (float): 개선으로 간주되기 위한 모니터링된 수치의 최소 변화량 (기본값: 0)
         """
         self.checkpoint_path = checkpoint_path
         self.patience = patience
@@ -184,15 +285,35 @@ class EarlyStopping:
         self.early_stop = False
         self.delta = delta
 
-    def compare(self, score):
+    def compare(self, score: list[float]) -> bool:
+        """
+        현재 점수를 이전 최고 점수와 비교하는 메서드
+
+        Args:
+            score (list[float]): 현재 점수 리스트
+
+        Returns:
+            bool: 개선되지 않았다면 True, 개선되었다면 False 반환
+        """
         for i in range(len(score)):
 
             if score[i] > self.best_score[i] + self.delta:
                 return False
+
         return True
 
-    def __call__(self, score, model):
+    def __call__(
+            self,
+            score: list[float],
+            model: torch.nn.Module
+        ):
+        """
+        EarlyStopping을 호출하여 현재 점수를 평가하고 모델을 저장하는 메서드
 
+        Args:
+            score (list[float]): 현재 점수 리스트
+            model (torch.nn.Module): 저장할 모델
+        """
         if self.best_score is None:
             self.best_score = score
             self.score_min = np.array([0] * len(score))
@@ -207,7 +328,18 @@ class EarlyStopping:
             self.save_checkpoint(score, model)
             self.counter = 0
 
-    def save_checkpoint(self, score, model):
+    def save_checkpoint(
+            self,
+            score: list[float],
+            model: torch.nn.Module
+        ):
+        """
+        모델의 체크포인트를 저장하는 메서드
+
+        Args:
+            score (list[float]): 현재 점수 리스트
+            model (torch.nn.Module): 저장할 모델
+        """
         if self.verbose:
             print("Better performance. Saving model ...")
         if self.checkpoint_path.split('/')[1].split('_')[0] in ("EASE", "EASER"):
@@ -228,7 +360,7 @@ def save_recommendations(
         output_filename: str
     ):
     """
-    추천 결과를 submission을 위한 양식에 맞게 바꾼 후, 파일로 저장하는 함수
+    추천 결과를 submission을 위한 양식에 맞게 바꾼 후, 파일로 저장하는 메서드
 
     Args:
         recommendations (list[list[float]]): 유저별 추천 아이템 리스트
@@ -240,6 +372,7 @@ def save_recommendations(
     item_ids = []
     for user_idx, items in enumerate(recommendations):
         user_id = idx_to_user[user_idx]
+
         for item_idx in items:
             user_ids.append(user_id)
             item_ids.append(idx_to_item[item_idx])
