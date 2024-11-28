@@ -17,8 +17,12 @@ model_args:
     embedding_size: 64  # 임베딩 크기
     n_layers: 3         # Graph propagation layers
     reg_weight: 1e-4    # Regularization weight
-
-
+  RecVAE:
+    latent_dim: 200               # VAE의 잠재 공간 크기
+    hidden_dims: [600, 300]       # 인코더/디코더의 히든 레이어 크기
+    dropout_prob: 0.5             # 드롭아웃 확률
+    anneal_cap: 0.2               # KL 다이버전스 학습 시 가중치
+    total_anneal_steps: 200000    # KL 다이버전스 학습 시 단계
 
 # Training configuration
 # epochs: 3               # 3번에 45분 정도, EASE는 선형 모델로 한 번의 학습으로 충분
