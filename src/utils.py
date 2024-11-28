@@ -1,7 +1,10 @@
-import os
+# src/utils.py
+
 import math
+import os
 import random
 
+import bottleneck as bn
 import numpy as np
 import pandas as pd
 import torch
@@ -128,6 +131,38 @@ def ndcg_k(actual, predicted, topk):
     return res / float(len(actual))
 
 
+def ndcg_binary_at_k_batch(X_pred, heldout_batch, k):
+    batch_users = X_pred.shape[0]
+    idx_topk_part = bn.argpartition(-X_pred, k, axis=1)
+    topk_part = X_pred[np.arange(batch_users)[:, np.newaxis],
+                    idx_topk_part[:, :k]]
+    idx_part = np.argsort(-topk_part, axis=1)
+
+    idx_topk = idx_topk_part[np.arange(batch_users)[:, np.newaxis], idx_part]
+
+    tp = 1. / np.log2(np.arange(2, k + 2))
+
+    DCG = (heldout_batch[np.arange(batch_users)[:, np.newaxis],
+                        idx_topk].toarray() * tp).sum(axis=1)
+    IDCG = np.array([(tp[:min(n, k)]).sum()
+                    for n in heldout_batch.getnnz(axis=1)])
+    return DCG / IDCG
+
+
+def recall_at_k_batch(X_pred, heldout_batch, k):
+    batch_users = X_pred.shape[0]
+
+    idx = bn.argpartition(-X_pred, k, axis=1)
+    X_pred_binary = np.zeros_like(X_pred, dtype=bool)
+    X_pred_binary[np.arange(batch_users)[:, np.newaxis], idx[:, :k]] = True
+
+    X_true_binary = (heldout_batch > 0).toarray()
+    tmp = (np.logical_and(X_true_binary, X_pred_binary).sum(axis=1)).astype(
+        np.float32)
+    recall = tmp / np.minimum(k, X_true_binary.sum(axis=1))
+    return recall
+
+
 class EarlyStopping:
     """Early stops the training if validation loss doesn't improve after a given patience."""
 
@@ -175,7 +210,14 @@ class EarlyStopping:
     def save_checkpoint(self, score, model):
         if self.verbose:
             print("Better performance. Saving model ...")
-        torch.save(model.state_dict(), self.checkpoint_path)
+        if self.checkpoint_path.split('/')[1].split('_')[0] in ("EASE", "EASER"):
+            directory, filename = os.path.split(self.checkpoint_path)
+            name, _ = os.path.splitext(filename)
+            new_file_path = os.path.join(directory, f"{name}.npy")
+            np.save(new_file_path, model.B)
+        else:
+            torch.save(model.state_dict(), self.checkpoint_path)
+
         self.score_min = score
 
 
@@ -183,9 +225,8 @@ def save_recommendations(
         recommendations: list[list[float]],
         idx_to_user: dict[int, int],
         idx_to_item: dict[int, int],
-        filename: str,
-        output_path: str
-    ) -> None:
+        output_filename: str
+    ):
     """
     추천 결과를 submission을 위한 양식에 맞게 바꾼 후, 파일로 저장하는 함수
 
@@ -193,11 +234,7 @@ def save_recommendations(
         recommendations (list[list[float]]): 유저별 추천 아이템 리스트
         idx_to_user (dict[int, int]): 인덱스를 유저 ID로 매핑시키기 위한 딕셔너리
         idx_to_item (dict[int, int]): 인덱스를 아이템 ID로 매핑시키기 위한 딕셔너리
-        filename (str): 저장할 파일 이름
-        saved (str): 저장할 경로
-
-    Return:
-        None
+        output_filename (str): 저장할 경로 및 파일 이름
     """
     user_ids = []
     item_ids = []
@@ -208,5 +245,5 @@ def save_recommendations(
             item_ids.append(idx_to_item[item_idx])
 
     output_df = pd.DataFrame({'user': user_ids, 'item': item_ids})
-    output_df.to_csv(f"{output_path}{filename}.csv", index=False)
-    print(f"Recommendations saved to {filename}")
+    output_df.to_csv(output_filename, index=False)
+    print(f"Recommendations saved to {output_filename}")

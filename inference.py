@@ -1,12 +1,12 @@
-import os
 import argparse
+import os
 
 from omegaconf import OmegaConf
 
 import src.loader as loader_module
 import src.model as model_module
 import src.trainer as trainer_module
-from src.utils import set_seed, check_path, save_recommendations
+from src.utils import check_path, save_recommendations, set_seed
 
 
 def main():
@@ -32,8 +32,8 @@ def main():
 
     args = config_yaml
     args_str = f"{args.model_name}_{args.run}"
-    checkpoint = args_str + ".pt"
-    checkpoint_path = os.path.join(args.output_path, checkpoint)
+    checkpoint_path = os.path.join(args.output_path, args_str + ".pt")
+    output_filename = os.path.join(args.output_path, args_str + ".csv")
 
     set_seed(args.seed)
     check_path(args.output_path)
@@ -42,7 +42,9 @@ def main():
     _, _, submission_loader, seen_items, idx_to_user, idx_to_item, _ = getattr(loader_module, args.model_name)(args).load_data()
 
     print(f"--------------------- INIT {args.model_name} ----------------------")
-    model = getattr(model_module, args.model_name)(**args.model_args[args.model_name]).to(args.device)
+    model = getattr(model_module, args.model_name)(**args.model_args[args.model_name])
+    if args.model_name not in ("EASE", "EASER"):
+        model.to(args.device)
 
     print(f"-------------------- {args.model_name} PREDICT --------------------")
     trainer = getattr(trainer_module, args.model_name)(model, None, None, submission_loader, seen_items, args)
@@ -50,7 +52,7 @@ def main():
     trainer.load(checkpoint_path)
     recommendations = trainer.submission(0)
 
-    save_recommendations(recommendations, idx_to_user, idx_to_item, args.model_name, args.output_path)
+    save_recommendations(recommendations, idx_to_user, idx_to_item, output_filename)
 
 
 if __name__ == "__main__":

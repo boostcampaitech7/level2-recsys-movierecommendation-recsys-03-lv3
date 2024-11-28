@@ -1,14 +1,15 @@
+# src/loader.py
+
 import os
 
+from argparse import Namespace
+from scipy.sparse import csr_matrix
+from sklearn.model_selection import train_test_split
 import numpy as np
 import pandas as pd
 import torch
+from torch.utils.data import Dataset, DataLoader
 
-from argparse import Namespace
-from sklearn.model_selection import train_test_split
-from torch.utils.data import DataLoader
-
-from src.dataset import ContextDataset
 from src.preprocessing import (
     filter_top_k_by_count,
     label_encoding,
@@ -71,7 +72,7 @@ class DeepFM(Loader):
 
         return train_loader, valid_loader, test_loader, seen_items, idx_to_user, idx_to_item, list(merged_train_df.columns)
 
-    def load_dataset(args: Namespace) -> pd.DataFrame:
+    def load_dataset(self, args: Namespace) -> pd.DataFrame:
         """
         데이터셋을 불러와 전처리 후 학습 데이터로 사용할 데이터프레임을 완성하는 함수
 
@@ -234,3 +235,125 @@ class DeepFM(Loader):
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
 
         return dataloader
+
+
+class EASE(Loader):
+    def __init__(
+        self,
+        args,
+    ):
+        super(EASE, self).__init__(
+            args,
+        )
+
+    def load_data(self) -> tuple[csr_matrix, csr_matrix, csr_matrix, dict[int, int], dict[int, int], int, int]:
+        # 데이터 불러오기
+        ratings = pd.read_csv(os.path.join(self.args.data_path, "train_ratings.csv"))
+
+        # 데이터 분할
+        train_data, test_data = self.train_test_split(ratings, split_ratio=0.8)
+
+        # 원본/학습/테스트 데이터의 유저, 아이템 ID를 인덱스로 변환
+        ratings, user_to_idx, item_to_idx, num_users, num_items = self.id2idx(ratings)
+        train_data, _, _, _, _ = self.id2idx(train_data)
+        test_data, _, _, _, _ = self.id2idx(test_data)
+        self.args.model_args.MultiVAE.input_dim = num_items
+
+        # 원본/학습/테스트 데이터의 희소 행렬 생성
+        interaction_matrix = self._df2mat(ratings, num_users, num_items)
+        train_data = self._df2mat(train_data, num_users, num_items)
+        test_data = self._df2mat(test_data, num_users, num_items)
+
+        # 이후 인덱스를 유저, 아이템 ID로 되돌리기 위한 딕셔너리 저장
+        idx_to_user, idx_to_item = self.idx2id(user_to_idx, item_to_idx)
+
+        return train_data, test_data, interaction_matrix, train_data, idx_to_user, idx_to_item, ["user", "item"]
+
+    def train_test_split(self, data: pd.DataFrame, split_ratio: float = 0.8) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """
+        주어진 데이터를 유저별로 시간순으로 정렬 후, 1 - split_ratio만큼 최근 데이터를 테스트 데이터로 분할하는 함수
+
+        Args:
+            data (pd.DataFrame): 유저(user), 아이템(item), 평가 시간(time) 정보를 열로 포함하는 상호작용 데이터프레임
+            split_ratio (float, optional): train_data로 만들 비율. 디폴트는 0.8
+
+        Returns:
+            tuple[pd.DataFrame, pd.DataFrame]: 분할된 학습/테스트 데이터프레임
+        """
+        train_data = []
+        test_data = []
+
+        # 유저별 시간순으로 split_ratio만큼 train data로, 1 - split_ratio만큼 test data로 분할
+        for _, group in data.groupby("user"):
+            split_idx = int(len(group) * split_ratio)  # 제공된 데이터는 이미 시간순으로 정렬되어 있는 데이터
+            train_data.append(group.iloc[:split_idx])
+            test_data.append(group.iloc[split_idx:])
+        train_data = pd.concat(train_data).reset_index(drop=True)
+        test_data = pd.concat(test_data).reset_index(drop=True)
+        return train_data, test_data
+
+    def id2idx(self, data: pd.DataFrame) -> tuple[pd.DataFrame, dict[int, int], dict[int, int], int, int]:
+        # 유저와 아이템의 unique 인덱스 저장
+        unique_users = data["user"].unique()
+        unique_items = data["item"].unique()
+
+        user_to_idx = {user: idx for idx, user in enumerate(unique_users)}
+        item_to_idx = {item: idx for idx, item in enumerate(unique_items)}
+
+        # 유저와 아이템 ID를 unique 인덱스로 변환
+        data["user"] = data["user"].map(user_to_idx)
+        data["item"] = data["item"].map(item_to_idx)
+
+        num_users = len(user_to_idx)
+        num_items = len(item_to_idx)
+
+        return data, user_to_idx, item_to_idx, num_users, num_items
+
+    def idx2id(self, user_to_idx: dict[int, int], item_to_idx: dict[int, int]) -> tuple[dict[int, int], dict[int, int]]:
+        # unique 인덱스를 유저, 아이템 ID로 변환
+        idx_to_user = {idx: user for user, idx in user_to_idx.items()}
+        idx_to_item = {idx: item for item, idx in item_to_idx.items()}
+        return idx_to_user, idx_to_item
+
+    def _df2mat(self, data: pd.DataFrame, num_users: int, num_items: int) -> csr_matrix:
+        # 희소 행렬 생성
+        rows, cols = data["user"].values, data["item"].values
+        data = np.ones(len(data))
+        interaction_matrix = csr_matrix((data, (rows, cols)), shape=(num_users, num_items))
+        return interaction_matrix
+
+
+class EASER(EASE):
+    def __init__(
+        self,
+        args,
+    ):
+        super(EASER, self).__init__(
+            args,
+        )
+
+
+class MultiVAE(EASE):
+    def __init__(
+        self,
+        args,
+    ):
+        super(MultiVAE, self).__init__(
+            args,
+        )
+
+
+class ContextDataset(Dataset):
+    def __init__(self, X: torch.Tensor, y: torch.Tensor):
+        self.X = X.long()
+        self.y = y.long()
+
+    def __len__(self):
+        return self.y.size(0)
+
+    def __getitem__(self, index: int):
+        if self.y is None:
+            return self.X[index]
+        else:
+            return self.X[index], self.y[index]
+

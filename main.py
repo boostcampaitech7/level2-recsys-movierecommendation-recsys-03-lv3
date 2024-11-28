@@ -1,6 +1,6 @@
-import os
-import json
 import argparse
+import json
+import os
 
 import numpy as np
 import wandb
@@ -9,7 +9,7 @@ from omegaconf import OmegaConf
 import src.loader as loader_module
 import src.model as model_module
 import src.trainer as trainer_module
-from src.utils import set_seed, check_path, EarlyStopping
+from src.utils import EarlyStopping, check_path, set_seed
 
 
 def main():
@@ -18,8 +18,8 @@ def main():
 
     parser.add_argument("--model_name", "--m", default="DeepFM", type=str,
                         help="사용할 모델을 설정할 수 있습니다. (기본값 DeepFM)")
-    parser.add_argument("--epochs", "--e", default=2, type=int,
-                        help="모델 훈련을 반복할 epochs수를 지정할 수 있습니다. (기본값 2)")
+    parser.add_argument("--epochs", "--e", default=1, type=int,
+                        help="모델 훈련을 반복할 epochs수를 지정할 수 있습니다. (기본값 1)")
     parser.add_argument("--run", "--r", type=str,
                         help="WandB run 이름을 설정할 수 있습니다.")
     parser.add_argument("--device", "--d", default="cuda", type=str,
@@ -38,7 +38,7 @@ def main():
     args = config_yaml
     args_str = f"{args.model_name}_{args.run}"
     checkpoint = args_str + ".pt"
-    checkpoint_path = os.path.join(args.output_path, checkpoint)
+    args.checkpoint_path = os.path.join(args.output_path, checkpoint)
 
     wandb.init(
         project=args.wandb_project,
@@ -57,16 +57,18 @@ def main():
     set_seed(args.seed)
     check_path(args.output_path)
 
-    print("----------------------- LOAD DATA -----------------------")
+    print("------------------------ LOAD DATA ------------------------")
     train_loader, valid_loader, test_loader, seen_items, _, _, features = getattr(loader_module, args.model_name)(args).load_data()
 
     print(f"--------------------- INIT {args.model_name} ----------------------")
-    model = getattr(model_module, args.model_name)(**args.model_args[args.model_name]).to(args.device)
+    model = getattr(model_module, args.model_name)(**args.model_args[args.model_name])
+    if args.model_name not in ("EASE", "EASER"):
+        model.to(args.device)
 
     print(f"-------------------- {args.model_name} TRAINING --------------------")
     trainer = getattr(trainer_module, args.model_name)(model, train_loader, valid_loader, test_loader, seen_items, args)
 
-    early_stopping = EarlyStopping(checkpoint_path, patience=10, verbose=True)
+    early_stopping = EarlyStopping(args.checkpoint_path, patience=10, verbose=True)
     for epoch in range(args.epochs):
         trainer.train(epoch)
         scores = trainer.valid(epoch)
@@ -77,7 +79,7 @@ def main():
             break
 
     print(f"---------------------- {args.model_name} TEST ----------------------")
-    trainer.load(checkpoint_path)
+    trainer.load(args.checkpoint_path)
     _ = trainer.test(0)
 
     wandb.log({

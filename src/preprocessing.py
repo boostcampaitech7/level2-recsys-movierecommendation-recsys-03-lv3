@@ -1,11 +1,14 @@
+# src/preprocessing.py
+
 import re
-import pandas as pd
-import numpy as np
 from argparse import Namespace
+from collections import Counter
+
+import numpy as np
+import pandas as pd
+from scipy.sparse import csr_matrix
 from sklearn.preprocessing import MultiLabelBinarizer
 from tqdm import tqdm
-from scipy.sparse import csr_matrix
-from collections import Counter
 
 
 # 피벗별로 상위 k개의 레벨만 남기기
