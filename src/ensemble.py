@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 def ensemble_models(outputs: pd.DataFrame, p: list[int]) -> pd.DataFrame:
     """
-    모델을 가중치만큼 랜덤 샘플링하여 앙상블합니다.
+    모델을 가중치만큼 랜덤 샘플링하여 앙상블하는 함수
 
     Args:
         outputs (pd.DataFrame): 각 모델의 output을 이어붙인 데이터프레임
@@ -24,14 +24,15 @@ def ensemble_models(outputs: pd.DataFrame, p: list[int]) -> pd.DataFrame:
         for i in range(len(p)):
             for _ in range(p[i]-1):
                 group = pd.concat([group, group.iloc[:, i]], axis=1)
+
         items = group.values.flatten()
 
         lst = []
         for _ in range(10):
             r = np.random.choice(items)
             lst.append(r)
-            items = items[items!=r]
-        
+            items = items[items != r]
+
         result = pd.DataFrame({"user": user_id, "item": lst})
         sampled = pd.concat([sampled, result], axis=0)
 
@@ -40,7 +41,7 @@ def ensemble_models(outputs: pd.DataFrame, p: list[int]) -> pd.DataFrame:
 
 def get_outputs(model_list: list[str], output_path: str) -> pd.DataFrame:
     """
-    모델 이름을 포함한 리스트와 파일이 저장된 경로를 입력받아 ensemble_models 함수에 입력할 수 있는 형태로 변환합니다.
+    모델 이름을 포함한 리스트와 파일이 저장된 경로를 입력받아 ensemble_models 함수에 입력할 수 있는 형태로 변환하는 함수
 
     Args:
         model_list (list[str]): 모델의 이름을 담은 리스트
@@ -57,18 +58,8 @@ def get_outputs(model_list: list[str], output_path: str) -> pd.DataFrame:
             outputs = output
         else:
             outputs = pd.concat([outputs, output["item"]], axis=1)
-    
+
     return outputs
-
-
-# def check_duplication(output, k=10):
-#     user_group = output.groupby("user")["item"].nunique()
-#     cnt = user_group.value_counts()
-#     print("Duplication Test: ", end="")
-#     if (cnt.shape[0] == 1) and (cnt.iloc[0, "item"] == k):
-#         print("Completed!")
-#     else:
-#         print("Falid...")
 
 
 def main():
@@ -82,16 +73,14 @@ def main():
                         help="모델의 가중치를 입력합니다. 서로소인 정수 형태로 입력해야 합니다. 예: --weights 7 2 1")
     parser.add_argument("--output_path", "--o", type=str, default="./output/",
                         help="앙상블을 수행할 파일 경로 및 앙상블 파일의 저장 경로를 설정할 수 있습니다.")
-    
+
     args = parser.parse_args()
 
     outputs = get_outputs(args.model_name, args.output_path)
-    
-    sampled_output = ensemble_models(outputs, args.weights)
-    
-    print(f"Sampled Output shape: {sampled_output.shape}")
 
-    # check_duplication(sampled_output)
+    sampled_output = ensemble_models(outputs, args.weights)
+
+    print(f"Sampled Output shape: {sampled_output.shape}")
 
     print("Saving output...")
     sampled_output.to_csv(os.path.join(args.output_path, "ensemble_output.csv"), index=False)
