@@ -58,10 +58,11 @@ def evaluate_ease(
     loss = model.loss_function_ease(train_data)
     
     post_fix = {
-        "Loss": f"{loss}",
+        "Loss": f"{loss:.4f}",
         "RECALL@10": f"{np.nanmean(r10):.4f}",
         "NDCG@10": f"{np.nanmean(n10):.4f}"
     }
+    wandb.log(post_fix)
 
     return loss, np.nanmean(n10), np.nanmean(r10)
 
