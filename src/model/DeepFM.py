@@ -5,7 +5,13 @@ import torch.nn as nn
 
 
 class DeepFM(nn.Module):
-    def __init__(self, input_dims, embedding_dim, mlp_dims, drop_rate=0.1):
+    def __init__(
+            self,
+            input_dims: list[int],
+            embedding_dim: int,
+            mlp_dims: list[int],
+            drop_rate: float = 0.1
+        ) -> None:
         super(DeepFM, self).__init__()
         total_input_dim = int(sum(input_dims))  # n_user + n_movie + n_genre
 
@@ -24,10 +30,11 @@ class DeepFM(nn.Module):
                 mlp_layers.append(nn.Linear(mlp_dims[i - 1], dim))
             mlp_layers.append(nn.ReLU(True))
             mlp_layers.append(nn.Dropout(drop_rate))
+
         mlp_layers.append(nn.Linear(mlp_dims[-1], 1))
         self.mlp_layers = nn.Sequential(*mlp_layers)
 
-    def fm(self, x):
+    def fm(self, x: torch.Tensor) -> torch.Tensor:
         # x : (batch_size, total_num_input)
         embed_x = self.embedding(x)
 
@@ -35,16 +42,18 @@ class DeepFM(nn.Module):
         square_of_sum = torch.sum(embed_x, dim=1) ** 2
         sum_of_square = torch.sum(embed_x ** 2, dim=1)
         fm_y += 0.5 * torch.sum(square_of_sum - sum_of_square, dim=1, keepdim=True)
+
         return fm_y
 
-    def mlp(self, x):
+    def mlp(self, x: torch.Tensor) -> torch.Tensor:
         embed_x = self.embedding(x)
 
         inputs = embed_x.view(-1, self.embedding_dim)
         mlp_y = self.mlp_layers(inputs)
+
         return mlp_y
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         # fm component
         fm_y = self.fm(x).squeeze(1)
 
@@ -52,4 +61,5 @@ class DeepFM(nn.Module):
         mlp_y = self.mlp(x).squeeze(1)
 
         y = torch.sigmoid(fm_y + mlp_y)
+
         return y

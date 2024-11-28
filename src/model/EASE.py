@@ -5,11 +5,11 @@ from scipy.sparse import csr_matrix
 
 
 class EASE:
-    def __init__(self, reg_lambda):
+    def __init__(self, reg_lambda: float) -> None:
         self.B = None
         self.reg_lambda = reg_lambda
 
-    def train(self, X):
+    def train(self, X: csr_matrix) -> None:
         try:
             X_dense = X.toarray()
             G = X_dense.T @ X_dense
@@ -21,8 +21,9 @@ class EASE:
         except Exception as e:
             print(f"Error during training: {e}")
 
-    def predict(self, X):
+    def predict(self, X: csr_matrix) -> None:
         X_dense = X.toarray() if isinstance(X, csr_matrix) else X
+
         return X_dense @ self.B
 
     def loss_function_ease(self, X: csr_matrix) -> float:
@@ -41,4 +42,5 @@ class EASE:
         X_dense = X.toarray()
         reconstruction_error = np.linalg.norm(X_dense - X_dense @ self.B, ord="fro")**2
         regularization_term = self.reg_lambda * np.linalg.norm(self.B, ord="fro")**2
+
         return reconstruction_error + regularization_term
