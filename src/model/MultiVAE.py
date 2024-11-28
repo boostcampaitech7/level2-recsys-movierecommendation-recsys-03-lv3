@@ -1,9 +1,8 @@
-# src/model/multivae.py
+# src/model/MultiVAE.py
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
 
 
 class MultiVAE(nn.Module):

@@ -1,10 +1,15 @@
-# config/config_baseline.yaml
 
 seed: 42                                        # 시드 고정
-device: "cuda"
 wandb_project: "movie"                          # wandb 프로젝트 이름
 data_path: "~/movie/data/train/"
 output_path: "output/"
+
+preprocessing:                                  # 전처리 파라미터
+    ascending: False
+    encoding: "label"
+    is_array: True
+    tree2array: False
+    negative_sampling: True
 
 model_args:                                     # model 파라미터
     EASE:
@@ -12,5 +17,15 @@ model_args:                                     # model 파라미터
     EASER:
         reg_lambda: 500
         smoothing: 0.001
+    DeepFM:
+        embedding_dim: 32
+        mlp_dims: [30, 20, 10]
+        drop_rate: 0.1
     MultiVAE:
         input_dim: 6807
+
+optim_args:                                     # optimizer 파라미터
+    lr: 0.001
+
+batch_size: 512
+kl_beta: 1.0

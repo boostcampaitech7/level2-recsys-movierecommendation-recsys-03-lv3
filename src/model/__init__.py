@@ -1,3 +1,4 @@
-from .ease import EASE
-from .easer import EASER
-from .multivae import MultiVAE
+from .DeepFM import DeepFM
+from .EASE import EASE
+from .EASER import EASER
+from .MultiVAE import MultiVAE
