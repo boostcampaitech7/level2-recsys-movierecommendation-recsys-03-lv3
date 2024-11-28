@@ -6,7 +6,7 @@ import torch
 
 from argparse import Namespace
 from sklearn.model_selection import train_test_split
-from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
+from torch.utils.data import DataLoader
 
 from src.dataset import ContextDataset
 from src.preprocessing import (
@@ -18,167 +18,219 @@ from src.preprocessing import (
     pivot_count,
     merge_dataset,
     fill_na,
+    replace_id,
 )
 
-def load_dataset(args: Namespace) -> pd.DataFrame:
-    """
-    데이터셋을 불러와 전처리 후 학습 데이터로 사용할 데이터프레임을 완성하는 함수
 
-    Args:
-        args (Namespace): parser.parse_args()에서 반환되는 Namespace 객체
+class Loader:
+    def __init__(
+        self,
+        args,
+    ):
+        self.args = args
 
-    Returns:
-        pd.DataFrame: 전처리 완료 후 병합된 데이터프레임
-    """
-    # 학습 데이터 불러오기
-    train_ratings = pd.read_csv(os.path.join(args.data_path, "train_ratings.csv"))
+    def load_data():
+        raise NotImplementedError
 
-    # 아이템 side information 불러오기
-    years = pd.read_csv(os.path.join(args.data_path, "years.tsv"), sep="\t")
-    writers = pd.read_csv(os.path.join(args.data_path, "writers.tsv"), sep="\t")
-    titles = pd.read_csv(os.path.join(args.data_path, "titles.tsv"), sep="\t")
-    genres = pd.read_csv(os.path.join(args.data_path, "genres.tsv"), sep="\t")
-    directors = pd.read_csv(os.path.join(args.data_path, "directors.tsv"), sep="\t")
 
-    # 전처리: genre, director, writer의 상위 k개의 범주 레벨만 남기기
-    # 이 때, 상위 k개는 빈도수 기준으로 내림차순으로 정해진다.
-    _genres = filter_top_k_by_count(genres, sel_col="genre", pivot_col="item", top_k=4, ascending=args.preprocessing.ascending)
-    _directors = filter_top_k_by_count(directors, sel_col="director", pivot_col="item", top_k=2)
-    _writers = filter_top_k_by_count(writers, sel_col="writer", pivot_col="item", top_k=2)
+class DeepFM(Loader):
+    def __init__(
+        self,
+        args,
+    ):
+        super(DeepFM, self).__init__(
+            args,
+        )
 
-    # 전처리: genre, director, writer 인코딩
-    if args.preprocessing.is_array:
-        if args.preprocessing.encoding == "label":
-            _genres = label_encoding(genres, label_col="genre", pivot_col="item")
+    def load_data(self):
+        data_path = os.path.join(self.args.output_path, "merged_train_df.csv")
+        if not os.path.isfile(data_path):
+            merged_train_df = self.load_dataset(self.args)
+            merged_train_df.to_csv(data_path, index=False)
         else:
-            _genres = multi_hot_encoding(genres, label_col="genre", pivot_col="item")
-        _directors = label_encoding(directors, label_col="director", pivot_col="item")
-        _writers = label_encoding(writers, label_col="writer", pivot_col="item")
-    else:
-        _genres = label_encoding(genres, label_col="genre")
-        _directors = label_encoding(directors, label_col="director")
-        _writers = label_encoding(writers, label_col="writer")
-    
-    # side information 데이터 item 기준으로 병합
-    item_df = merge_dataset(titles, years, _genres, _directors, _writers)
+            merged_train_df = pd.read_csv(data_path)
 
-    # 결측치 처리: side information 데이터를 병합하며서 생겨난 결측치 대체
-    item_df = fill_na(args, item_df, col="director") # 계층 구조면 -1, 배열 구조면 [-1]로 결측치 대체
-    # item_df = fill_na(item_df, col="writer") # 계층 구조면 -1, 배열 구조면 [-1]로 결측치 대체
-    item_df = fill_na(args, item_df, col="year") # title의 괄호 안 연도를 추출해 결측치 대체
+        merged_train_df, user_to_idx, item_to_idx = replace_id(merged_train_df)
+        idx_to_user = {v: k for k, v in user_to_idx.items()}
+        idx_to_item = {v + len(user_to_idx): k for k, v in item_to_idx.items()}
 
-    # 전처리: 정규표현식 활용한 title 텍스트 전처리
-    item_df = preprocess_title(item_df)
+        merged_train_df.drop(columns=["title", "genre", "director", "time", "year", "num_reviews_item"], inplace=True)
+        input_dims = merged_train_df.drop(columns=["review"]).nunique().tolist()
+        self.args.model_args.DeepFM.input_dims = input_dims
 
-    # 전처리: 같은 영화인데 다른 item ID 값을 갖는 데이터 전처리
-    # train_ratings, item_df = replace_duplication(train_ratings, item_df)
+        X_train, X_valid, y_train, y_valid = self.data_split(self.args, merged_train_df)
+        X_all, y_all = merged_train_df.drop(columns=["review"]), merged_train_df["review"]
 
-    # 계층 구조 데이터프레임을 배열 구조 데이터프레임으로 변환
-    # if args.preprocessing.tree2array:
-    #     item_df = tree2array(item_df, is_array=args.preprocessing.tree2array)
+        seen_data = X_train.loc[y_train[y_train == 1].index]
+        seen_data["item"] = seen_data["item"] + len(idx_to_user)
+        seen_items = seen_data.groupby("user")["item"].apply(list).to_dict()
 
-    # 전처리가 끝난 train_ratings와 item_df를 병합
-    merged_train_df = pd.merge(train_ratings, item_df, on="item", how="left")
+        train_loader = self.data_loader(["user", "item"], 1024, X_train, y_train, True)
+        valid_loader = self.data_loader(["user", "item"], 512, X_valid, y_valid, False)
+        test_loader = self.data_loader(["user", "item"], 1024, X_all, y_all, False)
 
-    # negative sampling
-    if args.preprocessing.negative_sampling:
-        merged_train_df = negative_sampling(merged_train_df, "user", "item", num_negative=50, na_list=merged_train_df.columns[3:])
-        
-    # 파생변수 추가: 아이템별 리뷰 수(num_reviews_item)
-    merged_train_df = pivot_count(merged_train_df, pivot_col="item", col_name="num_reviews_item")
+        return train_loader, valid_loader, test_loader, seen_items, idx_to_user, idx_to_item, list(merged_train_df.columns)
 
-    # (user, item, time)이 중복되는 경우 제거
-    # 같은 유저가 같은 아이템을 재평가(2번 이상 평가)한 사실을 시간이 다른 것으로 확인할 수 있었다.
-    if args.preprocessing.is_array:
-        merged_train_df = merged_train_df.drop_duplicates(["user", "item", "time"], ignore_index=True)
+    def load_dataset(args: Namespace) -> pd.DataFrame:
+        """
+        데이터셋을 불러와 전처리 후 학습 데이터로 사용할 데이터프레임을 완성하는 함수
 
-    return merged_train_df
+        Args:
+            args (Namespace): parser.parse_args()에서 반환되는 Namespace 객체
 
+        Returns:
+            pd.DataFrame: 전처리 완료 후 병합된 데이터프레임
+        """
+        # 학습 데이터 불러오기
+        train_ratings = pd.read_csv(os.path.join(args.data_path, "train_ratings.csv"))
 
-def data_split(args: Namespace, data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    # 사용자별로 데이터를 그룹화
-    grouped = data.groupby("user")
+        # 아이템 side information 불러오기
+        years = pd.read_csv(os.path.join(args.data_path, "years.tsv"), sep="\t")
+        writers = pd.read_csv(os.path.join(args.data_path, "writers.tsv"), sep="\t")
+        titles = pd.read_csv(os.path.join(args.data_path, "titles.tsv"), sep="\t")
+        genres = pd.read_csv(os.path.join(args.data_path, "genres.tsv"), sep="\t")
+        directors = pd.read_csv(os.path.join(args.data_path, "directors.tsv"), sep="\t")
 
-    train_list = []
-    valid_list = []
+        # 전처리: genre, director, writer의 상위 k개의 범주 레벨만 남기기
+        # 이 때, 상위 k개는 빈도수 기준으로 내림차순으로 정해진다.
+        _genres = filter_top_k_by_count(genres, sel_col="genre", pivot_col="item", top_k=4, ascending=args.preprocessing.ascending)
+        _directors = filter_top_k_by_count(directors, sel_col="director", pivot_col="item", top_k=2)
+        _writers = filter_top_k_by_count(writers, sel_col="writer", pivot_col="item", top_k=2)
 
-    # 각 사용자 그룹에서 훈련과 검증 세트를 나누기
-    for _, group in grouped:
+        # 전처리: genre, director, writer 인코딩
+        if args.preprocessing.is_array:
+            if args.preprocessing.encoding == "label":
+                _genres = label_encoding(genres, label_col="genre", pivot_col="item")
+            else:
+                _genres = multi_hot_encoding(genres, label_col="genre", pivot_col="item")
+            _directors = label_encoding(directors, label_col="director", pivot_col="item")
+            _writers = label_encoding(writers, label_col="writer", pivot_col="item")
+        else:
+            _genres = label_encoding(genres, label_col="genre")
+            _directors = label_encoding(directors, label_col="director")
+            _writers = label_encoding(writers, label_col="writer")
+
+        # side information 데이터 item 기준으로 병합
+        item_df = merge_dataset(titles, years, _genres, _directors, _writers)
+
+        # 결측치 처리: side information 데이터를 병합하며서 생겨난 결측치 대체
+        item_df = fill_na(args, item_df, col="director")  # 계층 구조면 -1, 배열 구조면 [-1]로 결측치 대체
+        # item_df = fill_na(item_df, col="writer")  # 계층 구조면 -1, 배열 구조면 [-1]로 결측치 대체
+        item_df = fill_na(args, item_df, col="year")  # title의 괄호 안 연도를 추출해 결측치 대체
+
+        # 전처리: 정규표현식 활용한 title 텍스트 전처리
+        item_df = preprocess_title(item_df)
+
+        # 전처리: 같은 영화인데 다른 item ID 값을 갖는 데이터 전처리
+        # train_ratings, item_df = replace_duplication(train_ratings, item_df)
+
+        # 계층 구조 데이터프레임을 배열 구조 데이터프레임으로 변환
+        # if args.preprocessing.tree2array:
+        #     item_df = tree2array(item_df, is_array=args.preprocessing.tree2array)
+
+        # 전처리가 끝난 train_ratings와 item_df를 병합
+        merged_train_df = pd.merge(train_ratings, item_df, on="item", how="left")
+
+        # negative sampling
         if args.preprocessing.negative_sampling:
-            X_train, X_valid, y_train, y_valid = train_test_split(
-                group.drop(columns="review"),
-                group["review"],
-                test_size=0.2,
-                random_state=args.seed,
-                shuffle=True
-            )
-            train_list.append(pd.concat([X_train, y_train], axis=1))
-            valid_list.append(pd.concat([X_valid, y_valid], axis=1))
+            merged_train_df = negative_sampling(merged_train_df, "user", "item", num_negative=50, na_list=merged_train_df.columns[3:])
+
+        # 파생변수 추가: 아이템별 리뷰 수(num_reviews_item)
+        merged_train_df = pivot_count(merged_train_df, pivot_col="item", col_name="num_reviews_item")
+
+        # (user, item, time)이 중복되는 경우 제거
+        # 같은 유저가 같은 아이템을 재평가(2번 이상 평가)한 사실을 시간이 다른 것으로 확인할 수 있었다.
+        if args.preprocessing.is_array:
+            merged_train_df = merged_train_df.drop_duplicates(["user", "item", "time"], ignore_index=True)
+
+        return merged_train_df
+
+    def data_split(self, args: Namespace, data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        # 사용자별로 데이터를 그룹화
+        grouped = data.groupby("user")
+
+        train_list = []
+        valid_list = []
+
+        # 각 사용자 그룹에서 훈련과 검증 세트를 나누기
+        for _, group in grouped:
+            if args.preprocessing.negative_sampling:
+                X_train, X_valid, y_train, y_valid = train_test_split(
+                    group.drop(columns="review"),
+                    group["review"],
+                    test_size=0.2,
+                    random_state=args.seed,
+                    shuffle=True
+                )
+                train_list.append(pd.concat([X_train, y_train], axis=1))
+                valid_list.append(pd.concat([X_valid, y_valid], axis=1))
+            else:
+                X_train, X_valid = train_test_split(
+                    group,
+                    test_size=0.2,
+                    random_state=args.seed,
+                    shuffle=True
+                )
+                train_list.append(X_train)
+                valid_list.append(X_valid)
+
+        # 리스트를 데이터프레임으로 결합
+        X_train = pd.concat(train_list, ignore_index=True)
+        X_valid = pd.concat(valid_list, ignore_index=True)
+
+        # y 값이 포함된 경우, y_train과 y_valid를 생성
+        if args.preprocessing.negative_sampling:
+            y_train = X_train.pop("review")
+            y_valid = X_valid.pop("review")
+            return X_train, X_valid, y_train, y_valid
         else:
-            X_train, X_valid = train_test_split(
-                group,
-                test_size=0.2,
-                random_state=args.seed,
-                shuffle=True
-            )
-            train_list.append(X_train)
-            valid_list.append(X_valid)
+            return X_train, X_valid
 
-    # 리스트를 데이터프레임으로 결합
-    X_train = pd.concat(train_list, ignore_index=True)
-    X_valid = pd.concat(valid_list, ignore_index=True)
+    def data_loader(
+        self,
+        cat_features: list[str],
+        batch_size: int,
+        X_data: pd.DataFrame = None,
+        y_data: pd.DataFrame = None,
+        shuffle: bool = True
+    ) -> DataLoader:
+        """
+        최적화된 데이터 로더 생성 함수
 
-    # y 값이 포함된 경우, y_train과 y_valid를 생성
-    if args.preprocessing.negative_sampling:
-        y_train = X_train.pop("review")
-        y_valid = X_valid.pop("review")
-        return X_train, X_valid, y_train, y_valid
-    else:
-        return X_train, X_valid
+        Args:
+            cat_feautures (list): 범주형 변수 이름 리스트
+            batch_size (int): 배치의 크기
+            X_data (pd.DataFrame): X 데이터프레임. 디폴트는 None
+            y_data (pd.DataFrame): y 데이터프레임. 디폴트는 None
+            shuffle (bool): 데이터 셔플 유무. 디폴트는 True
 
+        Returns:
+            DataLoader: torch.utils의 DataLoader 객체
+        """
+        # NumPy 배열로 변환 (전체 데이터 한 번에 처리)
+        cat_data = X_data.loc[:, cat_features]
+        cat_data_np = cat_data.to_numpy()
 
-def data_loader(
-    cat_features: list[str],
-    batch_size: int, 
-    X_data: pd.DataFrame = None,
-    y_data: pd.DataFrame = None,
-    shuffle: bool = True
-) -> DataLoader:
-    """
-    최적화된 데이터 로더 생성 함수
+        # 고유값 오프셋 계산
+        unique_counts = [0] + np.cumsum([len(np.unique(cat_data_np[:, i])) for i in range(cat_data_np.shape[1])]).tolist()
 
-    Args:
-        cat_feautures (list): 범주형 변수 이름 리스트
-        batch_size (int): 배치의 크기
-        X_data (pd.DataFrame): X 데이터프레임. 디폴트는 None
-        y_data (pd.DataFrame): y 데이터프레임. 디폴트는 None
-        shuffle (bool): 데이터 셔플 유무. 디폴트는 True
+        # 데이터 오프셋 추가 (벡터화 처리)
+        for i in range(cat_data_np.shape[1]):
+            cat_data_np[:, i] += unique_counts[i]
 
-    Returns:
-        DataLoader: torch.utils의 DataLoader 객체
-    """
-    # NumPy 배열로 변환 (전체 데이터 한 번에 처리)
-    cat_data = X_data.loc[:, cat_features]
-    cat_data_np = cat_data.to_numpy()
+        # X와 y 텐서 변환
+        X = torch.cat([
+            torch.tensor(cat_data_np, dtype=torch.float32),
+            torch.tensor(X_data.drop(cat_features, axis=1).values, dtype=torch.float32)
+        ], axis=1)
+        if y_data is not None:
+            y = torch.tensor(y_data.values, dtype=torch.float32)
+        else:
+            y = None
 
-    # 고유값 오프셋 계산
-    unique_counts = [0] + np.cumsum([len(np.unique(cat_data_np[:, i])) for i in range(cat_data_np.shape[1])]).tolist()
+        dataset = ContextDataset(X, y)
+        if batch_size == 0:
+            batch_size = len(dataset)
+        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
 
-    # 데이터 오프셋 추가 (벡터화 처리)
-    for i in range(cat_data_np.shape[1]):
-        cat_data_np[:, i] += unique_counts[i]
-
-    # X와 y 텐서 변환
-    X = torch.cat([
-        torch.tensor(cat_data_np, dtype=torch.float32),
-        torch.tensor(X_data.drop(cat_features, axis=1).values, dtype=torch.float32)
-    ], axis=1)
-    if y_data is not None:
-        y = torch.tensor(y_data.values, dtype=torch.float32)
-    else:
-        y = None
-
-    dataset = ContextDataset(X, y)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
-    
-    return dataloader
+        return dataloader

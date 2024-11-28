@@ -2,16 +2,14 @@ import os
 import json
 import argparse
 
-import pandas as pd
 import numpy as np
 import wandb
 from omegaconf import OmegaConf
 
+import src.loader as loader_module
 import src.model as model_module
 import src.trainer as trainer_module
 from src.utils import set_seed, check_path, EarlyStopping
-from src.loader import load_dataset, data_split, data_loader
-from src.preprocessing import replace_id
 
 
 def main():
@@ -59,42 +57,14 @@ def main():
     set_seed(args.seed)
     check_path(args.output_path)
 
-    print("--------------- LOAD DATA ---------------")
+    print("----------------------- LOAD DATA -----------------------")
+    train_loader, valid_loader, test_loader, seen_items, _, _, features = getattr(loader_module, args.model_name)(args).load_data()
 
-    # merged_train_df = load_dataset(args)
-    merged_train_data = os.path.join(args.output_path, "merged_train_df.csv")
-    # merged_train_df.to_csv(merged_train_data, index=False)
-    merged_train_df = pd.read_csv(merged_train_data)
-
-    merged_train_df, _, _ = replace_id(merged_train_df)
-    merged_train_df.drop(columns=["title", "genre", "director", "time", "year", "num_reviews_item"], inplace=True)
-    wandb.log({"features": list(merged_train_df.columns)})
-
-    field_dims = merged_train_df.drop(columns=["review"]).nunique().tolist()
-    args.model_args[args.model_name].field_dims = field_dims
-
-    X_train, X_valid, y_train, y_valid = data_split(args, merged_train_df)
-
-    seen_items = X_train.loc[y_train[y_train == 1].index].groupby("user")["item"].apply(set).to_dict()
-    per_users_df = merged_train_df.groupby("user", group_keys=False).apply(lambda x: list(zip(x["item"].values, x["review"].values)), include_groups=False)
-    user_groups = []
-    for user, item_review in per_users_df.items():
-        items, reviews = zip(*item_review)
-        if user in seen_items:
-            user_seen_items = seen_items[user]
-        else:
-            user_seen_items = {}
-        user_groups.append((user, list(items), list(reviews), user_seen_items))
-
-    train_loader = data_loader(["user", "item"], 1024, X_train, y_train, True)
-    valid_loader = data_loader(["user", "item"], 512, X_valid, y_valid, False)
-
-    print(f"--------------- INIT {args.model_name} ---------------")
+    print(f"--------------------- INIT {args.model_name} ----------------------")
     model = getattr(model_module, args.model_name)(**args.model_args[args.model_name]).to(args.device)
 
-    print(f"--------------- {args.model_name} TRAINING ---------------")
-
-    trainer = getattr(trainer_module, args.model_name)(model, train_loader, valid_loader, None, user_groups, args)
+    print(f"-------------------- {args.model_name} TRAINING --------------------")
+    trainer = getattr(trainer_module, args.model_name)(model, train_loader, valid_loader, test_loader, seen_items, args)
 
     early_stopping = EarlyStopping(checkpoint_path, patience=10, verbose=True)
     for epoch in range(args.epochs):
@@ -106,11 +76,12 @@ def main():
             print("Early stopping")
             break
 
-    print(f"--------------- {args.model_name} TEST ---------------")
+    print(f"---------------------- {args.model_name} TEST ----------------------")
     trainer.load(checkpoint_path)
     _ = trainer.test(0)
 
     wandb.log({
+        "features": features,
         "params": json.dumps(OmegaConf.to_container(args.model_args[args.model_name]))
     })
     wandb.finish()

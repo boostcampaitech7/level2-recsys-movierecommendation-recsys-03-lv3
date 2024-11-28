@@ -14,12 +14,10 @@ def set_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    # some cudnn methods can be random even after fixing the seed
-    # unless you tell it to be deterministic
     torch.backends.cudnn.deterministic = True
 
 
-def check_path(path):
+def check_path(path: str) -> None:
     if not os.path.exists(path):
         os.makedirs(path)
         print(f"{path} created")
@@ -181,18 +179,34 @@ class EarlyStopping:
         self.score_min = score
 
 
-def generate_submission_file(data_file, preds, items_dict):
-    reversed_items_dict = {v: k for k, v in items_dict.items()}
-    rating_df = pd.read_csv(data_file)
-    users = rating_df["user"].unique()
+def save_recommendations(
+        recommendations: list[list[float]],
+        idx_to_user: dict[int, int],
+        idx_to_item: dict[int, int],
+        filename: str,
+        output_path: str
+    ) -> None:
+    """
+    추천 결과를 submission을 위한 양식에 맞게 바꾼 후, 파일로 저장하는 함수
 
-    result = []
+    Args:
+        recommendations (list[list[float]]): 유저별 추천 아이템 리스트
+        idx_to_user (dict[int, int]): 인덱스를 유저 ID로 매핑시키기 위한 딕셔너리
+        idx_to_item (dict[int, int]): 인덱스를 아이템 ID로 매핑시키기 위한 딕셔너리
+        filename (str): 저장할 파일 이름
+        saved (str): 저장할 경로
 
-    for index, items in enumerate(preds):
-        for item in items:
-            org_item = reversed_items_dict[item]
-            result.append((users[index], org_item))
+    Return:
+        None
+    """
+    user_ids = []
+    item_ids = []
+    for user_idx, items in enumerate(recommendations):
+        user_id = idx_to_user[user_idx]
+        for item_idx in items:
+            user_ids.append(user_id)
+            item_ids.append(idx_to_item[item_idx])
 
-    pd.DataFrame(result, columns=["user", "item"]).to_csv(
-        "output/submission.csv", index=False
-    )
+    output_df = pd.DataFrame({'user': user_ids, 'item': item_ids})
+    output_df.to_csv(f"{output_path}{filename}.csv", index=False)
+    print(f"Recommendations saved to {filename}")
