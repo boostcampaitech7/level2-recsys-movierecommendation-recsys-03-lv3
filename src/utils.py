@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import torch
 from scipy.sparse import csr_matrix
+from tqdm import tqdm
 
 
 def set_seed(seed):
@@ -380,3 +381,59 @@ def save_recommendations(
     output_df = pd.DataFrame({'user': user_ids, 'item': item_ids})
     output_df.to_csv(output_filename, index=False)
     print(f"Recommendations saved to {output_filename}")
+
+
+def ensemble_models(outputs: pd.DataFrame, p: list[int]) -> pd.DataFrame:
+    """
+    모델을 가중치만큼 랜덤 샘플링하여 앙상블하는 메서드
+
+    Args:
+        outputs (pd.DataFrame): 각 모델의 output을 이어붙인 데이터프레임
+        p (list[int]): 각 모델의 가중치
+
+    Returns:
+        pd.DataFrame: 샘플링이 완료된 데이터프레임
+    """
+    output_group = outputs.groupby("user")
+    sampled = pd.DataFrame(columns=["user", "item"])
+    for user_id, group in tqdm(output_group, desc="Sampling..."):
+        group = group.iloc[:, 1:]
+        for i in range(len(p)):
+            for _ in range(p[i]-1):
+                group = pd.concat([group, group.iloc[:, i]], axis=1)
+
+        items = group.values.flatten()
+
+        lst = []
+        for _ in range(10):
+            r = np.random.choice(items)
+            lst.append(r)
+            items = items[items != r]
+
+        result = pd.DataFrame({"user": user_id, "item": lst})
+        sampled = pd.concat([sampled, result], axis=0)
+
+    return sampled
+
+
+def get_outputs(model_list: list[str], output_path: str) -> pd.DataFrame:
+    """
+    모델 이름을 포함한 리스트와 파일이 저장된 경로를 입력받아 ensemble_models 함수에 입력할 수 있는 형태로 변환하는 함수
+
+    Args:
+        model_list (list[str]): 모델의 이름을 담은 리스트
+        output_path (str): csv 파일이 저장되어 있는 경로
+
+    Returns:
+        pd.DataFrame: 결과 데이터프레임
+    """
+    print("File Load:", *model_list)
+    for i, model_name in enumerate(model_list):
+        output = pd.read_csv(os.path.join(output_path, model_name) + "_output.csv")
+
+        if i == 0:
+            outputs = output
+        else:
+            outputs = pd.concat([outputs, output["item"]], axis=1)
+
+    return outputs
