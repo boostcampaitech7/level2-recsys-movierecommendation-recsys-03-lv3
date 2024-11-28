@@ -32,19 +32,20 @@ def filter_top_k_by_count(
     # 1. 레벨별 전체 등장 빈도 계산
     col_count = df[sel_col].value_counts().reset_index()
     col_count.columns = [sel_col, "count"]
-    
+
     # 2. 원본 데이터프레임에 레벨 count 추가
     df = df.merge(col_count, on=sel_col)
-    
+
     # 3. 피벗에서 상위 k개의 레벨 남기기
     filtered_df = df.groupby(pivot_col).apply(
         (lambda x: x.nsmallest(top_k, "count")) if ascending else (lambda x: x.nlargest(top_k, "count"))
     ).reset_index(drop=True)
-    
+
     # 4. count 열 제거 후 결과 반환
     result_df = filtered_df.drop(columns=["count"])
-    
+
     return result_df
+
 
 def label_encoding(
         df: pd.DataFrame,
@@ -64,18 +65,19 @@ def label_encoding(
     """
     # 범주형 자료를 수치형으로 변환
     array, _ = pd.factorize(df[label_col])
-    
+
     # 변환된 값으로 새로운 데이터프레임 생성
     tmp_df = df.copy()
     tmp_df[label_col] = array
 
-    if pivot_col != None:
+    if pivot_col is not None:
         # 리스트 형태로 변환 후 데이터프레임 반환
         grouped_df = tmp_df.groupby(pivot_col)[label_col].apply(list)
         result_df = pd.merge(tmp_df["item"], grouped_df, on="item", how="left")
         return result_df
-    
+
     return tmp_df
+
 
 # 함수 정의: 멀티-핫-인코딩 하기
 def multi_hot_encoding(
@@ -110,6 +112,7 @@ def multi_hot_encoding(
 
     return result_df
 
+
 # 정규표현식을 활용한 title 텍스트 전처리 함수
 def preprocess_title(df: pd.DataFrame, col: str = "title") -> pd.DataFrame:
     """
@@ -124,20 +127,21 @@ def preprocess_title(df: pd.DataFrame, col: str = "title") -> pd.DataFrame:
     """
     # 1. 따옴표(”, ‘) 제거
     df[col] = df[col].apply(lambda x: re.sub(r'^[\'"](.*)[\'"]$', r'\1', x))
-    
+
     # 2. 영문 제목만 추출
     df[col] = df[col].apply(lambda x: re.match(r'^[^(]+', x).group().strip() if re.match(r'^[^(]+', x) else x)
-    
+
     # 3. "~, The", "~, A", "~, An" 형태를 "The ~", "A ~", "An ~"으로 변경
     df[col] = df[col].apply(lambda x: re.sub(r'^(.*),\s(The|A|An)$', r'\2 \1', x))
-    
+
     # 4. 특수문자 제거
     df[col] = df[col].apply(lambda x: re.sub(r'[^a-zA-Z0-9\s]', '', x))
-    
+
     # 5. 소문자로 변환
     df[col] = df[col].apply(lambda x: x.lower())
-    
+
     return df
+
 
 def fill_na(
         args: Namespace,
@@ -164,14 +168,15 @@ def fill_na(
         case _:
             df[col] = df[col].fillna(-1)
             if args.preprocessing.is_array:
-                df[col] = df[col].apply(lambda x: x if type(x) == list else [x])
-    
+                df[col] = df[col].apply(lambda x: x if type(x) is list else [x])
+
     return df
+
 
 def replace_duplication(train_ratings: pd.DataFrame, item_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     같은 아이템임에도 다른 아이템 ID(item)를 갖는 경우, item_df에서 하나만 남기고 train_ratings에서는 하나의 아이템 번호로 통합하는 함수
-    
+
     현재 우주전쟁(War of the Worlds, 2005) 영화가 2개의 item ID를 갖고 있다.
     따라서 같은 영화인데 다른 item 값을 갖는 데이터 중에서 결측치가 있는 item을 제거하고, train_ratings에는 제거한 item 대신 남아있는 item으로 변경한다.
 
@@ -182,7 +187,7 @@ def replace_duplication(train_ratings: pd.DataFrame, item_df: pd.DataFrame) -> t
     Returns:
         tuple[pd.DataFrame, pd.DataFrame]:
         - pd.DataFrame: 전처리가 완료된 train_ratings 데이터프레임
-        - pd.DataFrame: 전처리가 완료된 item_df 데이터프레임 
+        - pd.DataFrame: 전처리가 완료된 item_df 데이터프레임
     """
 
     item_df = item_df[item_df["item"] != 64997]
@@ -194,6 +199,7 @@ def replace_duplication(train_ratings: pd.DataFrame, item_df: pd.DataFrame) -> t
     train_ratings.loc[idx, "item"] = 34048
 
     return train_ratings, item_df
+
 
 # 계층 구조로 이루어진 데이터프레임을 배열 구조로 이루어진 데이터프레임으로 변경하는 함수
 def tree2array(df: pd.DataFrame, is_array: bool) -> pd.DataFrame:
@@ -216,6 +222,7 @@ def tree2array(df: pd.DataFrame, is_array: bool) -> pd.DataFrame:
     df_tolist = df.groupby(["item", "title", "year"]).agg(rule).reset_index()
 
     return df_tolist
+
 
 # 함수 정의: num_negative만큼 negative_sampling하기
 def negative_sampling(
@@ -270,7 +277,7 @@ def negative_sampling(
 
     return raw_rating_df
 
- 
+
 # pivot_col 기준으로 카운팅하기
 def pivot_count(
         df: pd.DataFrame,
@@ -290,15 +297,16 @@ def pivot_count(
     """
 
     if "review" in df.columns:
-        positive_df =  df[df["review"]==1]
+        positive_df = df[df["review"] == 1]
         pivot_count_df = positive_df[pivot_col].value_counts()
-    
+
     else:
         pivot_count_df = df[pivot_col].value_counts()
 
-    df[col_name] =  df[pivot_col].map(pivot_count_df)
-    
+    df[col_name] = df[pivot_col].map(pivot_count_df)
+
     return df
+
 
 def merge_dataset(
         titles: pd.DataFrame,
@@ -326,6 +334,7 @@ def merge_dataset(
     # item_df = pd.merge(item_df, writers, on="item", how="left")
     return item_df
 
+
 def replace_id(merged_df: pd.DataFrame) -> tuple[pd.DataFrame, dict[int, int], dict[int, int]]:
     """
     유저와 아이템 ID를 0부터 시작하는 nunique까지의 숫자로 매핑하는 함수
@@ -334,30 +343,31 @@ def replace_id(merged_df: pd.DataFrame) -> tuple[pd.DataFrame, dict[int, int], d
         merged_df (pd.DataFrame): 유저와 아이템 ID(user, item)를 column으로 갖는 데이터프레임
 
     Returns:
-        tuple[pd.DataFrame, dict[int, int], dict[int, int]]: 
+        tuple[pd.DataFrame, dict[int, int], dict[int, int]]:
         - pd.DataFrame: 유저와 아이템 ID가 변환된 데이터프레임
         - Dict[int, int]: 기존 유저 ID를 key로, 매핑하려는 값을 value로 갖는 딕셔너리
         - Dict[int, int]: 기존 아이템 ID를 key로, 매핑하려는 값을 value로 갖는 딕셔너리
     """
     # 유저, 아이템을 zero-based index로 매핑
-    users = merged_df["user"].unique() # 유저 집합을 리스트로 생성
-    items = merged_df["item"].unique() # 아이템 집합을 리스트로 생성
+    users = merged_df["user"].unique()  # 유저 집합을 리스트로 생성
+    items = merged_df["item"].unique()  # 아이템 집합을 리스트로 생성
     n_users = len(users)
     n_items = len(items)
 
     if (n_users - 1) != max(users):
         users_dict = {users[i]: i for i in range(n_users)}
-        merged_df["user"]  = merged_df["user"].map(lambda x : users_dict[x])
-        users = list(set(merged_df.loc[:,"user"]))
+        merged_df["user"] = merged_df["user"].map(lambda x: users_dict[x])
+        users = list(set(merged_df.loc[:, "user"]))
 
     if (n_items - 1) != max(items):
         items_dict = {items[i]: i for i in range(n_items)}
-        merged_df["item"]  = merged_df["item"].map(lambda x : items_dict[x])
-        items =  list(set((merged_df.loc[:, "item"])))
+        merged_df["item"] = merged_df["item"].map(lambda x: items_dict[x])
+        items = list(set((merged_df.loc[:, "item"])))
 
     merged_df = merged_df.sort_values(by=["user"])
     merged_df.reset_index(drop=True, inplace=True)
     return merged_df, users_dict, items_dict
+
 
 # sparse matrix 생성
 def df2mat(df: pd.DataFrame, merged_df: pd.DataFrame) -> csr_matrix:
@@ -371,7 +381,8 @@ def df2mat(df: pd.DataFrame, merged_df: pd.DataFrame) -> csr_matrix:
     Returns:
         scipy.sparse.csr_matrix: 희소 행렬 형태의 user-item matrix
     """
-    if "review" in df.columns: df = df[df["review"]]
+    if "review" in df.columns:
+        df = df[df["review"]]
 
     user_seq = []
     lines = df.groupby("user")["item"].apply(list)
@@ -382,7 +393,7 @@ def df2mat(df: pd.DataFrame, merged_df: pd.DataFrame) -> csr_matrix:
     col = []
     data = []
     for user_id, item_list in enumerate(user_seq):
-        for item in item_list: 
+        for item in item_list:
             row.append(user_id)
             col.append(item)
             data.append(1)
@@ -396,9 +407,10 @@ def df2mat(df: pd.DataFrame, merged_df: pd.DataFrame) -> csr_matrix:
 
     return rating_matrix
 
+
 # genre_taste를 추가하는 함수
 def genre_taste(
-        df:pd.DataFrame,
+        df: pd.DataFrame,
         new_col: str = "genre_taste",
         genre_col: str = "genre",
         item_col: str = "item",
@@ -443,23 +455,24 @@ def genre_taste(
 
     for u in df[user_col].unique():
         # 빈도 계산
-        frequency = Counter(df[df[user_col]==u][genre_col].sum())
+        frequency = Counter(df[df[user_col] == u][genre_col].sum())
 
         # 빈도가 높은 순으로 3개까지 숫자 추출
         most_common_numbers = [num for num, count in frequency.most_common(3)]
 
         # frequency를 우선순위에 따라 정렬
         sorted_frequency = sorted(frequency.items(), key=lambda x: (-x[1], genre_encoding_priority.get(x[0], float('inf'))))
-        
+
         # 빈도가 높은 순으로 3개까지 추출
         most_common_numbers = [num for num, count in sorted_frequency[:3]]
 
         small_empty_df = pd.DataFrame({user_col: u, new_col: [most_common_numbers]})
-        empty_df = pd.concat([empty_df, small_empty_df],axis=0,sort=False)
+        empty_df = pd.concat([empty_df, small_empty_df], axis=0, sort=False)
 
     result_df = pd.merge(df, empty_df, on=user_col, how="left")
 
     return result_df
+
 
 # director_taste를 추가하는 함수
 def director_taste(
@@ -489,10 +502,10 @@ def director_taste(
 
     for u in df[user_col].unique():
         # 빈도 계산
-        frequency = Counter(df[df[user_col]==u][director_col].sum())
+        frequency = Counter(df[df[user_col] == u][director_col].sum())
 
         # count가 3 이상인 항목만 추출
-        #filtered_numbers = [(num, count) for num, count in frequency.items() if count >= 3 and num != -1]
+        # filtered_numbers = [(num, count) for num, count in frequency.items() if count >= 3 and num != -1]
         filtered_numbers = [(num, count) for num, count in frequency.items() if count >= 3]
         # count 기준으로 정렬 (내림차순)
         sorted_numbers = sorted(filtered_numbers, key=lambda x: x[1], reverse=True)
@@ -512,13 +525,13 @@ def director_taste(
         else:
             most_common_numbers = [num for num in most_common_numbers if num != -1]
             most_common_numbers = most_common_numbers[:3]
-        
+
         # most_common_numbers가 비어있으면 [-1]대입
         if not empty_list:
-            if len(most_common_numbers)==0:
-                most_common_numbers=[-1]
+            if len(most_common_numbers) == 0:
+                most_common_numbers = [-1]
 
         small_empty_df = pd.DataFrame({user_col: u, new_col: [most_common_numbers]})
-        empty_df = pd.concat([empty_df, small_empty_df],axis=0,sort=False)
+        empty_df = pd.concat([empty_df, small_empty_df], axis=0, sort=False)
     result_df = pd.merge(df, empty_df, on=user_col, how="left")
     return result_df
