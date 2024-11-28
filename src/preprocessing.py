@@ -153,7 +153,7 @@ def fill_na(
     side information을 병합하면서 생겨난 결측치를 처리하는 함수
 
     Args:
-        args (Namespace): parser.parse_args()에서 반환되는 Namespace 객체. is_array에 따라 결측치 처리 방법을 달리 한다.
+        args (Namespace): parser.parse_args()에서 반환된 Namespace 객체. is_array에 따라 결측치 처리 방법을 달리 한다.
         df (pd.DataFrame): 결측치를 갖는 데이터프레임
         col (str): 결측치를 처리하고자 하는 column 이름
 
