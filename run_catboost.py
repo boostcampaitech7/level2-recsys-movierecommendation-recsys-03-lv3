@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 
 from src.loader import load_dataset
 
-# **1. 데이터 로드 및 전처리**
+# 1. 데이터 로드 및 전처리
 args: argparse.Namespace = argparse.Namespace(
     data_path="/data/ephemeral/home/movie/data/train",
     preprocessing=argparse.Namespace(
@@ -26,13 +26,13 @@ args: argparse.Namespace = argparse.Namespace(
 data: pd.DataFrame = load_dataset(args)
 
 # 필요 없는 열 제거 및 데이터 전처리
-data = data.drop(columns=['time', 'title'])
-data['year_bin'] = (data['year'] // 5) * 5
-data = data.drop(columns=['year'])
-data['director'] = data['director'].apply(lambda x: x[0] if isinstance(x, list) and len(x) > 0 else -1)
+data = data.drop(columns=["time", "title"])
+data["year_bin"] = (data["year"] // 5) * 5
+data = data.drop(columns=["year"])
+data["director"] = data["director"].apply(lambda x: x[0] if isinstance(x, list) and len(x) > 0 else -1)
 
 
-# **2. Negative Sampling**
+# 2. Negative Sampling
 def negative_sampling(
     df: pd.DataFrame,
     user_col: str,
@@ -69,33 +69,36 @@ def negative_sampling(
         )
         for item in negative_items:
             neg_sample: Dict[str, Any] = {user_col: user, item_col: item, "review": 0}
+
             for na_col in na_list:
                 neg_sample[na_col] = item_na_map[na_col].get(item, None)
+
             neg_samples.append(neg_sample)
 
     neg_samples_df: pd.DataFrame = pd.DataFrame(neg_samples)
     raw_rating_df: pd.DataFrame = pd.concat([df, neg_samples_df], axis=0, ignore_index=True)
     raw_rating_df["review"] = raw_rating_df["review"].fillna(1).astype("int64")
+
     return raw_rating_df
 
 
-na_columns: List[str] = ['Action', 'Adventure', 'Animation', 'Children',
-                         'Comedy', 'Crime', 'Documentary', 'Drama', 'Fantasy', 'Film-Noir',
-                         'Horror', 'Musical', 'Mystery', 'Romance', 'Sci-Fi', 'Thriller',
-                         'War', 'Western', 'director', 'num_reviews_item', 'year_bin']
+na_columns: List[str] = ["Action", "Adventure", "Animation", "Children",
+                         "Comedy", "Crime", "Documentary", "Drama", "Fantasy", "Film-Noir",
+                         "Horror", "Musical", "Mystery", "Romance", "Sci-Fi", "Thriller",
+                         "War", "Western", "director", "num_reviews_item", "year_bin"]
 data = negative_sampling(data, user_col="user", item_col="item", num_negative=500, na_list=na_columns)
 
 
-# **3. Train/Test Split**
+# 3. Train/Test Split
 train: pd.DataFrame
 test: pd.DataFrame
 train, test = train_test_split(data, test_size=0.2, random_state=42)
 
-# **4. CatBoost 모델 학습**
-X_train: pd.DataFrame = train.drop(columns=['review'])
-y_train: pd.Series = train['review']
-X_test: pd.DataFrame = test.drop(columns=['review'])
-y_test: pd.Series = test['review']
+# 4. CatBoost 모델 학습
+X_train: pd.DataFrame = train.drop(columns=["review"])
+y_train: pd.Series = train["review"]
+X_test: pd.DataFrame = test.drop(columns=["review"])
+y_test: pd.Series = test["review"]
 
 categorical_features: List[str] = ["user", "item", "director", "year_bin"]
 
@@ -116,7 +119,7 @@ test_pool: Pool = Pool(X_test, y_test, cat_features=categorical_features)
 model.fit(train_pool, eval_set=test_pool)
 
 
-# **5. 추천 생성**
+# 5. 추천 생성
 data_unique: pd.DataFrame = data.drop_duplicates(subset="item", keep="first")
 metadata: Dict[int, Dict[str, Any]] = data_unique.set_index("item").drop(columns=["review", "user"]).to_dict(orient="index")
 
@@ -157,7 +160,7 @@ user_ids: np.ndarray = test["user"].unique()
 recommendations: pd.DataFrame = generate_recommendations(model, user_ids, k=10)
 
 
-# **6. 평가 지표 계산**
+# 6. 평가 지표 계산
 def recall_at_k(recommendations: pd.DataFrame, ground_truth: pd.DataFrame, k: int = 10) -> float:
     """
     Recall@K 계산.
@@ -176,6 +179,7 @@ def recall_at_k(recommendations: pd.DataFrame, ground_truth: pd.DataFrame, k: in
         true_items = ground_truth[ground_truth["user"] == user]["item"].values
         hits += len(set(rec_items[:k]) & set(true_items))
         total += len(true_items)
+
     return hits / total if total > 0 else 0
 
 
@@ -199,6 +203,7 @@ def ndcg_at_k(recommendations: pd.DataFrame, ground_truth: pd.DataFrame, k: int 
         idcg = sum([1 / np.log2(idx + 2) for idx in range(min(len(true_items), k))])
         total_ndcg += dcg / idcg if idcg > 0 else 0
         total_users += 1
+
     return total_ndcg / total_users if total_users > 0 else 0
 
 
@@ -210,6 +215,6 @@ print(f"Recall@10: {recall:.4f}")
 print(f"NDCG@10: {ndcg:.4f}")
 
 
-# **7. 결과 저장**
+# 7. 결과 저장
 recommendations_sorted: pd.DataFrame = recommendations.sort_values(by="user").reset_index(drop=True)
 recommendations_sorted.to_csv("submission.csv", index=False)
