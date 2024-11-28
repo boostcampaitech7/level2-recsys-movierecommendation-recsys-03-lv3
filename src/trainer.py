@@ -98,7 +98,7 @@ class Trainer:
         recall_5 = recall_at_k(actual, predicted, topk=5)
         recall_10 = recall_at_k(actual, predicted, topk=10)
         precision_10 = precision_at_k(actual, predicted, topk=10)
-        map_10 = mapk(actual, predicted, k=10)
+        map_10 = mapk(actual, predicted, topk=10)
         ndcg_10 = ndcg_k(actual, predicted, topk=10)
 
         post_fix = {
