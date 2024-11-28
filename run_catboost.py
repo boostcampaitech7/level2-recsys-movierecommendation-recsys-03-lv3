@@ -1,12 +1,13 @@
 # 필요한 라이브러리 및 모듈 임포트
-import pandas as pd
-import numpy as np
-from catboost_model import CatBoostClassifier, Pool
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import roc_auc_score
-from tqdm import tqdm
-from typing import List, Dict, Any
 import argparse
+
+import numpy as np
+import pandas as pd
+from catboost import CatBoostClassifier, Pool
+from sklearn.model_selection import train_test_split
+from tqdm import tqdm
+from typing import Any, Dict, List
+
 from src.loader import load_dataset
 
 # **1. 데이터 로드 및 전처리**
@@ -62,8 +63,8 @@ def negative_sampling(
 
     for user, u_items in tqdm(user_items_dict.items()):
         negative_items: List[int] = np.random.choice(
-            list(items - u_items), 
-            min(num_negative, len(items - u_items)), 
+            list(items - u_items),
+            min(num_negative, len(items - u_items)),
             replace=False
         )
         for item in negative_items:
@@ -76,6 +77,7 @@ def negative_sampling(
     raw_rating_df: pd.DataFrame = pd.concat([df, neg_samples_df], axis=0, ignore_index=True)
     raw_rating_df["review"] = raw_rating_df["review"].fillna(1).astype("int64")
     return raw_rating_df
+
 
 na_columns: List[str] = ['Action', 'Adventure', 'Animation', 'Children',
                          'Comedy', 'Crime', 'Documentary', 'Drama', 'Fantasy', 'Film-Noir',
