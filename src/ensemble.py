@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 def ensemble_models(outputs: pd.DataFrame, p: list[int]) -> pd.DataFrame:
     """
-    모델을 가중치만큼 랜덤 샘플링하여 앙상블하는 함수
+    모델을 가중치만큼 랜덤 샘플링하여 앙상블하는 메서드
 
     Args:
         outputs (pd.DataFrame): 각 모델의 output을 이어붙인 데이터프레임
@@ -41,7 +41,7 @@ def ensemble_models(outputs: pd.DataFrame, p: list[int]) -> pd.DataFrame:
 
 def get_outputs(model_list: list[str], output_path: str) -> pd.DataFrame:
     """
-    모델 이름을 포함한 리스트와 파일이 저장된 경로를 입력받아 ensemble_models 함수에 입력할 수 있는 형태로 변환하는 함수
+    모델 이름을 포함한 리스트와 파일이 저장된 경로를 입력받아 ensemble_models 메서드에 입력할 수 있는 형태로 변환하는 메서드
 
     Args:
         model_list (list[str]): 모델의 이름을 담은 리스트

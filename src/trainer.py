@@ -132,7 +132,7 @@ class Trainer:
 
     def load(self, file_name: str) -> None:
         """
-        저장된 모델의 상태(가중치, 편향 등)를 파일에서 불러오는 함수
+        저장된 모델의 상태(가중치, 편향 등)를 파일에서 불러오는 메서드
         - EASE 또는 EASER 모델인 경우, .npy 파일에서 B 메트릭스 로드
         - 그 외의 경우, .pt 파일에서 모델의 state_dict를 로드
 
