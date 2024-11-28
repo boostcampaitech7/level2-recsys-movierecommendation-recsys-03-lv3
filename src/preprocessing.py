@@ -77,7 +77,7 @@ def label_encoding(
         # 리스트 형태로 변환 후 데이터프레임 반환
         grouped_df = tmp_df.groupby(pivot_col)[label_col].apply(list)
         result_df = pd.merge(tmp_df["item"], grouped_df, on="item", how="left")
-        
+
         return result_df
 
 
@@ -92,7 +92,7 @@ def multi_hot_encoding(
 
     Args:
         df (pd.DataFrame): pivot_col과 label_col을 column으로 갖는 데이터프레임
-        label_col (str): 데이터프레임에서 멀티 핫 인코딩을 적용할 범주형 변수명
+        label_col (str): 데이터프레임에서 멀티-핫 인코딩을 적용할 범주형 변수명
         pivot_col (str): 데이터프레임에서 그룹화할 기준이 되는 변수명
 
     Returns:
@@ -115,14 +115,13 @@ def multi_hot_encoding(
     return result_df
 
 
-# 정규표현식을 활용한 title 텍스트 전처리 함수
 def preprocess_title(df: pd.DataFrame, col: str = "title") -> pd.DataFrame:
     """
     정규 표현식을 이용해 title 변수의 텍스트를 전처리하는 함수
 
     Args:
         df (pd.DataFrame): 원본 데이터프레임
-        col (str): 전처리할 열 이름. title이 기본값이며 이외에 사용하지 않음.
+        col (str): 전처리할 열 이름. title이 기본값이며 이외에 사용하지 않는다.
 
     Returns:
         pd.DataFrame: 전처리가 완료된 데이터프레임
@@ -156,7 +155,7 @@ def fill_na(
     Args:
         args (Namespace): parser.parse_args()에서 반환되는 Namespace 객체. is_array에 따라 결측치 처리 방법을 달리 한다.
         df (pd.DataFrame): 결측치를 갖는 데이터프레임
-        col (str): 결측치를 처리하고자 하는 열 이름
+        col (str): 결측치를 처리하고자 하는 column 이름
 
     Returns:
         pd.DataFrame: 결측치를 처리한 데이터프레임
@@ -166,7 +165,6 @@ def fill_na(
             df[col] = df[col].fillna(
                 df["title"].str.extract(r"\((\d{4})\)", expand=False)  # 괄호 안 네 자리 숫자를 추출하는 정규표현식
             ).astype("int64")
-
         case _:
             df[col] = df[col].fillna(-1)
             if args.preprocessing.is_array:
@@ -190,7 +188,7 @@ def negative_sampling(
         user_col (str):  데이터프레임에서 사용자 ID를 나타내는 변수명
         item_col (str): 데이터프레임에서 아이템 ID를 나타내는 변수명
         num_negative (int): negative sample의 수
-        na_list (list[str, str, str, str]): negative sampling 이후 결측치를 처리할 column의 이름
+        na_list (list[str, str, str, str, str]): negative sampling 이후 결측치를 처리할 column의 이름
 
     Returns:
         pd.DataFrame: 기존 데이터프레임에 negative sample까지 결합한 데이터프레임
@@ -211,8 +209,10 @@ def negative_sampling(
         # negative sample 데이터 생성
         for item in negative_items:
             neg_sample = {user_col: user, item_col: item, "review": 0}
+
             for na_col in na_list:
                 neg_sample[na_col] = item_na_map[na_col].get(item, None)
+
             neg_samples.append(neg_sample)
 
     # negative sample과 기존 데이터 결합
@@ -221,14 +221,13 @@ def negative_sampling(
     raw_rating_df["review"] = raw_rating_df["review"].fillna(1)
     raw_rating_df["review"] = raw_rating_df["review"].astype("int64")
     raw_rating_df["time"] = raw_rating_df["time"].fillna(0)
-    
+
     if raw_rating_df.isna().sum().sum():
         raise ValueError("처리되지 않은 결측치가 있습니다.")
 
     return raw_rating_df
 
 
-# pivot_col 기준으로 카운팅하기
 def pivot_count(
         df: pd.DataFrame,
         pivot_col: str,
