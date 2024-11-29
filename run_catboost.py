@@ -1,12 +1,12 @@
 # 필요한 라이브러리 및 모듈 임포트
 import argparse
+from typing import Any, Dict, List
 
 import numpy as np
 import pandas as pd
 from catboost import CatBoostClassifier, Pool
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
-from typing import Any, Dict, List
 
 from src.loader import load_dataset
 
