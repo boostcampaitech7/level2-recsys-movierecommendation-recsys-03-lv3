@@ -86,55 +86,6 @@ def run_model(config: dict, model_name: str) -> dict:
     return result
 
 
-def generate_topk_recommendations(model_file: str, output_file: str, k: int=10) -> None:
-    """
-     학습된 모델을 사용해 사용자별 Top-K 추천을 직접 생성하고 CSV로 저장합니다. 
-
-    Args:
-        model_file (str): 저장된 모델 파일 경로
-        output_file (str): 추천 결과를 저장할 CSV 파일 경로
-        k (int, optional): 추천할 아이템 수. 기본값은 10
-    """
-    # 학습된 모델과 데이터 로드
-    config, model, dataset, train_data, valid_data, test_data = load_data_and_model(model_file=model_file)
-
-    # 전체 유저와 아이템 ID 가져오기
-    user_ids = dataset.get_user_feature()[dataset.uid_field].numpy()  # 전체 사용자 ID
-    item_ids = dataset.get_item_feature()[dataset.iid_field].numpy()  # 전체 아이템 ID
-
-    # 사용자별 Top-K 추천 생성
-    recommendations = []
-    for user_id in user_ids:
-        # 사용자가 이미 상호작용한 아이템을 가져옵니다.
-        interacted_items = set(
-            test_data.dataset.inter_feat[test_data.dataset.uid_field == user_id][test_data.dataset.iid_field].numpy()
-        )
-
-        # 상호작용하지 않은 아이템에 대해 점수를 예측합니다.
-        scores = []
-        for item_id in item_ids:
-            if item_id not in interacted_items:
-                input_data = {
-                    dataset.uid_field: torch.tensor([user_id]),
-                    dataset.iid_field: torch.tensor([item_id]),
-                }
-                score = model.predict(input_data)
-                scores.append((item_id, score.item()))
-
-        # 점수를 기준으로 상위 K개의 아이템을 선택합니다.
-        topk_items = sorted(scores, key=lambda x: x[1], reverse=True)[:k]
-
-        for item, score in topk_items:
-            recommendations.append({"user": user_id, "item": item, "score": score})
-
-    # 결과를 DataFrame으로 변환
-    recommendations_df = pd.DataFrame(recommendations)
-
-    # CSV로 저장
-    recommendations_df.to_csv(output_file, index=False)
-    print(f"Recommendations saved to {output_file}")
-
-
 def main():
     # Argument 설정
     parser = argparse.ArgumentParser()
@@ -175,16 +126,6 @@ def main():
 
     print(f"Model {args.model_name} finished in {elapsed_time / 60:.2f} minutes.")
     print(result)
-
-    # 모델과 데이터셋 불러오기
-    print("===Loading saved model and data===")
-    model_file = os.path.join("./saved/", args.model_path)  
-    output_file = "/data/ephemeral/home/movie/yoon/code/output"
-    if not os.path.exists(model_file):
-        raise FileNotFoundError(f"Saved model file not found: {model_file}")
-    # 사용자별 Top-10 추천 생성 및 저장
-    generate_topk_recommendations(model_file=model_file, output_file=output_file, k=10)
-
 
     wandb.log({
         "MAP@10": result["test_result"].get("map@10", 0),
