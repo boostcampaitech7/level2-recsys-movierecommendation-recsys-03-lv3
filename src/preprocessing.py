@@ -1,6 +1,5 @@
 import re
 from argparse import Namespace
-from collections import Counter
 
 import pandas as pd
 import numpy as np
