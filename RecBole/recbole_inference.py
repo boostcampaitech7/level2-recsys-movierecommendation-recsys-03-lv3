@@ -1,13 +1,26 @@
-import os
-import glob
 import argparse
-import torch
+import glob
+import os
+
 import pandas as pd
-import numpy as np
+import torch
 from recbole.quick_start import load_data_and_model
 
-def find_recent_model(model_name, saved_dir="./saved/"):
-    """가장 최근에 생성된 {model_name}~.pth 파일 찾기"""
+
+def find_recent_model(model_name: str, saved_dir: str="./saved/") -> str:
+    """
+    저장된 디렉토리에서 가장 최근에 생성된 모델 파일을 찾습니다
+
+    Args:
+        model_name (str): 모델 이름
+        saved_dir (str, optional): 저장된 모델 디렉토리. 기본값은 "./saved/"
+
+    Raises:
+        FileNotFoundError: 모델 파일을 찾을 수 없을 때 발생
+
+    Returns:
+        str: 가장 최근 모델 파일 경로 
+    """
     model_files = glob.glob(os.path.join(saved_dir, f"{model_name}-*.pth"))
     if not model_files:
         raise FileNotFoundError(f"No saved models found for model_name: {model_name} in {saved_dir}")
@@ -15,8 +28,18 @@ def find_recent_model(model_name, saved_dir="./saved/"):
     recent_model = max(model_files, key=os.path.getmtime)
     return recent_model
 
-def generate_topk_recommendations(model_file, output_file, k=10):
-    """ 학습된 모델을 사용해 사용자별 Top-K 추천을 생성하고 CSV로 저장하는 함수. """
+
+def generate_topk_recommendations(model_file: str, output_file: str, k: int=10) -> None:
+    """
+    학습된 모델을 사용하여 사용자별 Top-K 추천을 생성하고 CSV 파일로 저장합니다
+
+    Args:
+        model_file (str): 저장된 모델 파일 경로
+        output_file (str): 추천 결과를 저장할 CSV 파일 경로
+        k (int, optional): 추천할 아이템 수. 기본값은 10
+    """
+    # 모델과 데이터셋 불러오기
+    print("===Loading saved model and data===")    
     config, model, dataset, train_data, valid_data, test_data = load_data_and_model(model_file=model_file)
 
     print("Fields in Interaction object:", test_data.dataset.field2type.keys())
@@ -76,9 +99,6 @@ def main():
     parser.add_argument("--config_file", type=str, default="./config/recbole_config.yaml", help="Path to RecBole config file")
     parser.add_argument("--model_path", type=str, default="recent", help="Saved model path (Default = 'recent' to use the latest model)")
     args = parser.parse_args()
-
-    # 모델과 데이터셋 불러오기
-    print("===Loading saved model and data===")
 
     # 모델 경로 결정
     if args.model_path == "recent":

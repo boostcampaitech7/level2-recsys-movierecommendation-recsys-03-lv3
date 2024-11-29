@@ -1,17 +1,25 @@
-import os
-import pandas as pd
 import argparse
+import os
 import time
-import yaml
-#import glob
-from recbole.quick_start import run_recbole, load_data_and_model
-from recbole.utils.case_study import full_sort_topk
+
+import pandas as pd
+import torch
 import wandb
+import yaml
+from recbole.quick_start import load_data_and_model, run_recbole
 
-# wandb.login()
 
-def load_config(config_file, model_name):
-    """YAML 설정 파일에서 model_args를 불러오기"""
+def load_config(config_file: str, model_name: str) -> dict:
+    """
+    YAML 설정 파일에서 model_args를 불러옵니다.
+
+    Args:
+        config_file (str): 설정 파일 경로
+        model_name (str): 실행할 모델 이름
+
+    Returns:
+        dict: 모델 설정을 포함한 설정 딕셔너리
+    """
     with open(config_file, "r") as f:
         config = yaml.safe_load(f)
     
@@ -22,8 +30,17 @@ def load_config(config_file, model_name):
     model_config = config.get("model_args", {}).get(model_name, {})
     return {**common_config, **model_config}
 
-def preprocess_data(data_path):
-    """merged_train.csv를 읽어 RecBole 형식으로 데이터 전처리"""
+
+def preprocess_data(data_path: str) -> str:
+    """
+    데이터를 RecBole 형식으로 전처리하여 저장합니다.
+
+    Args:
+        data_path (str): 원본 데이터 경로(CSV파일)
+
+    Returns:
+        str: RecBole 데이터셋 폴더 경로
+    """
     # 데이터 로드
     merged_train_df = pd.read_csv(data_path)
 
@@ -49,66 +66,83 @@ def preprocess_data(data_path):
     return "./dataset"
 
 
-def run_model(config, model_name):
-    """RecBole 모델 실행"""
-    # config_file = f"{model_name.lower()}_config.yaml" # 모델별 config파일 생성 시
+def run_model(config: dict, model_name: str) -> dict:
+    """
+    RecBole 모델 실행하고 결과를 반환합니다.
+
+    Args:
+        config (dict): 모델 실행에 필요한 설정 딕셔너리
+        model_name (str): 실행할 모델 이름
+
+    Returns:
+        dict: 모델 실행 결과
+    """
     result = run_recbole(
         model=model_name,
-        dataset="train_data",  # dataset 이름
-        config_file_list=[], # [config_file]
+        dataset="train_data",   # dataset 이름
+        config_file_list=[],    # [config_file]
         config_dict=config,
     )
     return result
 
-# def find_saved_model(model_name):
-#     """저장된 모델 파일을 찾는 함수"""
-#     saved_files = glob.glob(f"./saved/{model_name}-*.pth")  # 모델 이름과 패턴에 맞는 파일 탐색
-#     if saved_files:
-#         # 가장 최근 파일 선택 (필요하면 정렬 기준 추가 가능)
-#         return saved_files[-1]
-#     else:
-#         raise FileNotFoundError(f"No saved model found for model: {model_name}")
 
-def generate_topk_recommendations(model_file, output_file, topk=10):
-    """ 학습된 모델을 사용해 사용자별 Top-K 추천을 생성하고 CSV로 저장하는 함수. """
+def generate_topk_recommendations(model_file: str, output_file: str, k: int=10) -> None:
+    """
+     학습된 모델을 사용해 사용자별 Top-K 추천을 직접 생성하고 CSV로 저장합니다. 
+
+    Args:
+        model_file (str): 저장된 모델 파일 경로
+        output_file (str): 추천 결과를 저장할 CSV 파일 경로
+        k (int, optional): 추천할 아이템 수. 기본값은 10
+    """
     # 학습된 모델과 데이터 로드
     config, model, dataset, train_data, valid_data, test_data = load_data_and_model(model_file=model_file)
-
-    # history_item 값 확인
-    print(test_data.dataset.inter_feat["history_item"])
 
     # 전체 유저와 아이템 ID 가져오기
     user_ids = dataset.get_user_feature()[dataset.uid_field].numpy()  # 전체 사용자 ID
     item_ids = dataset.get_item_feature()[dataset.iid_field].numpy()  # 전체 아이템 ID
 
     # 사용자별 Top-K 추천 생성
-    topk_items = full_sort_topk(
-        uid_series=user_ids,
-        model=model,
-        test_data=test_data,
-        k=topk,
-    )
+    recommendations = []
+    for user_id in user_ids:
+        # 사용자가 이미 상호작용한 아이템을 가져옵니다.
+        interacted_items = set(
+            test_data.dataset.inter_feat[test_data.dataset.uid_field == user_id][test_data.dataset.iid_field].numpy()
+        )
+
+        # 상호작용하지 않은 아이템에 대해 점수를 예측합니다.
+        scores = []
+        for item_id in item_ids:
+            if item_id not in interacted_items:
+                input_data = {
+                    dataset.uid_field: torch.tensor([user_id]),
+                    dataset.iid_field: torch.tensor([item_id]),
+                }
+                score = model.predict(input_data)
+                scores.append((item_id, score.item()))
+
+        # 점수를 기준으로 상위 K개의 아이템을 선택합니다.
+        topk_items = sorted(scores, key=lambda x: x[1], reverse=True)[:k]
+
+        for item, score in topk_items:
+            recommendations.append({"user": user_id, "item": item, "score": score})
 
     # 결과를 DataFrame으로 변환
-    recommendations = []
-    for user_id, items in zip(user_ids, topk_items.cpu().numpy()):
-        for item in items:
-            recommendations.append({"user": user_id, "item": item})
-    
     recommendations_df = pd.DataFrame(recommendations)
 
     # CSV로 저장
     recommendations_df.to_csv(output_file, index=False)
     print(f"Recommendations saved to {output_file}")
 
+
 def main():
     # Argument 설정
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_path", type=str, default="./dataset", help="Path to dataset directory")
-    parser.add_argument("--model_name", type=str, choices=["EASE", "LightGCN"], default="EASE", help="Model name to run")
+    parser.add_argument("--model_name", type=str, choices=["EASE", "LightGCN", "RecVAE", "DeepFM"], default="EASE", help="Model name to run")
     parser.add_argument("--config_file", type=str, default="./config/recbole_config.yaml", help="Path to RecBole config file")
     parser.add_argument("--epochs", type=int, default=3, help="Number of epochs for training")
-    parser.add_argument("--model_path", type=str, default="EASE-Nov-26-2024_13-42-38.pth", help="Saved model path")
+    parser.add_argument("--model_path", type=str, default="EASE-Nov-27-2024_05-45-37.pth", help="Saved model path")
     args = parser.parse_args()
     
     config = load_config(args.config_file, args.model_name)
@@ -126,7 +160,7 @@ def main():
     )
     # Artifacts에 폴더 내 파일 모두 업로드
     wandb.run.log_code("./")
-
+    
     # 데이터 전처리
     if not os.path.exists(os.path.join(args.data_path, "train_data.inter")):
         print("===Preprocessing data===")
@@ -149,7 +183,7 @@ def main():
     if not os.path.exists(model_file):
         raise FileNotFoundError(f"Saved model file not found: {model_file}")
     # 사용자별 Top-10 추천 생성 및 저장
-    generate_topk_recommendations(model_file=model_file, output_file=output_file, topk=10)
+    generate_topk_recommendations(model_file=model_file, output_file=output_file, k=10)
 
 
     wandb.log({
