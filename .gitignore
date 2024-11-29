@@ -4,3 +4,7 @@ __pycache__/
 wandb/
 catboost_info/
 *.pth
+*.log
+events.*
+._*
+output/
