@@ -32,7 +32,7 @@ def load_dataset(args: Namespace) -> pd.DataFrame:
     데이터셋을 불러와 전처리 후 학습 데이터로 사용할 데이터프레임을 완성하는 함수
 
     Args:
-        args (Namespace): parser.parse_args()에서 반환된 Namespace 객체
+        args (Namespace): parser.parse_args()에서 반횐된 Namespace 객체
 
     Returns:
         pd.DataFrame: 전처리 완료 후 병합된 데이터프레임
@@ -173,7 +173,7 @@ class DeepFM(Loader):
         주어진 데이터프레임을 학습/테스트 데이터로 분할하는 메서드
 
         Args:
-            args (Namespace): parser.parse_args()에서 반환된 Namespace 객체
+            args (Namespace): parser.parse_args()에서 반횐된 Namespace 객체
             data (pd.DataFrame): 분할하려는 데이터프레임
 
         Returns:
