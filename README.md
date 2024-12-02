@@ -1,4 +1,4 @@
-<h1 align="center"><a href='https://www.notion.so/Book-Rating-Prediction-e2b8e0c8872647b2bfdeb3f5df0cbd8a'>RecSys-03 ㄱ해줘</a></h1>
+<h1 align="center"><a href='https://ginger-scion-7bd.notion.site/13bb563074a68145a3bbc81c40f1f0df?v=13bb563074a68172a5ec000cacc5fa79&pvs=4'>RecSys-03 ㄱ해줘</a></h1>
 <br></br>
 
 ## 🏆 대회 개요 🏆
@@ -7,7 +7,7 @@ MovieLens 데이터를 전처리하여 competition 용도로 재구성한 데이
 
 - Objective : 
   **사용자의 영화 시청 이력 데이터를 바탕으로 사용자가 다음에 시청할 영화 및 좋아할 영화를 예측**
-- 평가 지표 : (normalized)**Recall@K**
+- 평가 지표 : (normalized) **Recall@K**
 
 <br></br>
 ## 👨‍👩‍👧‍👦 팀 소개 👨‍👩‍👧‍👦
@@ -89,6 +89,18 @@ MovieLens 데이터를 전처리하여 competition 용도로 재구성한 데이
     python run_catboost.py
     ```
 
+- Inference & Ensemble
+
+    ```bash
+    # inference.py 실행
+    python inference.py --m DeepFM   --r baseline --d cuda
+    python inference.py --m EASE     --r baseline --d cpu
+    python inference.py --m EASER    --r baseline --d cpu
+    python inference.py --m MultiVAE --r baseline --d cuda
+
+    # ensemble.py 실행
+    python ensemble.py --m EASER CatBoost MultiVAE --w 7 2 1 --o output/
+    ```
 
 ## 🥇 Result 🥇
 #### 결과 -> 8등
@@ -113,8 +125,8 @@ MovieLens 데이터를 전처리하여 competition 용도로 재구성한 데이
 
 - ***main*** branch는 배포이력을 관리하기 위해 사용,
 
-  ***book*** branch는 기능 개발을 위한 branch들을 병합(merge)하기 위해 사용
-- 모든 기능이 추가되고 버그가 수정되어 배포 가능한 안정적인 상태라면 ***book*** branch에 병합(merge)
+  ***movie*** branch는 기능 개발을 위한 branch들을 병합(merge)하기 위해 사용
+- 모든 기능이 추가되고 버그가 수정되어 배포 가능한 안정적인 상태라면 ***movie*** branch에 병합(merge)
 - 작업을 할 때에는 개인의 branch를 통해 작업
 - EDA
     
